@@ -37,6 +37,7 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { PermissionDeniedModal } from './components/PermissionDeniedModal';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { Toast } from './components/Toast';
+import { DepartmentSidebar } from './components/DepartmentSidebar';
 import { Footer } from './components/Footer';
 
 export const App: React.FC = () => {
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
   const [policies, setPolicies] = useState<Policy[]>(getCachedPolicies);
   const [bundles, setBundles] = useState<Bundle[]>(getCachedBundles);
   const [currentTab, setCurrentTab] = useState<TabType>('home');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('mih_dark_mode') === 'true';
   });
@@ -462,6 +464,36 @@ export const App: React.FC = () => {
     }
   };
 
+  // Import Batch Policies & Sync to Firestore
+  const handleImportBatchPolicies = async (imported: Policy[]) => {
+    setIsLoading(true);
+    setLoadingMessage(`جاري استيراد وحفظ (${imported.length}) سياسة في قاعدة البيانات السحابية...`);
+    try {
+      const updated = [...policies];
+      imported.forEach((newP) => {
+        const idx = updated.findIndex((p) => p.id === newP.id || p.code === newP.code);
+        if (idx !== -1) {
+          updated[idx] = newP;
+        } else {
+          updated.unshift(newP);
+        }
+      });
+      setPolicies(updated);
+      saveCachedPolicies(updated);
+
+      // Direct sync to Firestore if connected
+      if (isFirebaseConnected && fbRef.current.db) {
+        await seedFirestoreWithDefaults(fbRef.current.db, imported, currentUser?.email || 'admin@mih-quality.gov.eg');
+      }
+
+      setIsLoading(false);
+      showToast(`🎉 تم بنجاح استيراد (${imported.length}) سياسات وحفظها في الموقع وفايرستور!`);
+    } catch (err: any) {
+      setIsLoading(false);
+      alert(`حدث خطأ أثناء الاستيراد: ${err.message || err}`);
+    }
+  };
+
   // Save Settings & Whitelist
   const handleSaveSettings = async (newSettings: SystemSettings) => {
     const prevEmails = settings.adminEmails || [];
@@ -509,6 +541,7 @@ export const App: React.FC = () => {
         isFirebaseConnected={isFirebaseConnected}
         activeReadingPolicy={activeDocPolicy}
         onBackFromReading={() => setActiveDocPolicy(null)}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
       {/* Main Container */}
@@ -581,9 +614,34 @@ export const App: React.FC = () => {
             onShowToast={showToast}
             onUpdateSettings={handleSaveSettings}
             onSeedFirestore={handleSeedFirestore}
+            onImportPolicies={handleImportBatchPolicies}
           />
         )}
       </main>
+
+      {/* Floating Sidebar Toggle Button */}
+      <button
+        type="button"
+        onClick={() => setIsSidebarOpen(true)}
+        className="fixed bottom-6 left-6 z-40 px-4 py-3 rounded-full bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs sm:text-sm shadow-xl hover:shadow-2xl flex items-center gap-2 transition transform hover:scale-105 cursor-pointer border border-teal-500/50"
+        title="فتح شجرة أقسام وسياسات المستشفى"
+      >
+        <span className="text-base">📂</span>
+        <span>أقسام المستشفى ({policies.length})</span>
+      </button>
+
+      {/* Department & Policies Sidebar Drawer */}
+      <DepartmentSidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        policies={policies}
+        onSelectPolicy={(p) => {
+          setActiveDocPolicy(p);
+        }}
+        onLaunchPresentation={(p) => {
+          setActivePresPolicy(p);
+        }}
+      />
 
       {/* Footer */}
       <Footer />

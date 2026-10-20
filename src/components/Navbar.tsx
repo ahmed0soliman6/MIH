@@ -18,6 +18,7 @@ interface NavbarProps {
   onToggleDarkMode: () => void;
   activeReadingPolicy?: Policy | null;
   onBackFromReading?: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -33,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleDarkMode,
   activeReadingPolicy,
   onBackFromReading,
+  onToggleSidebar,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -145,6 +147,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               📚 مكتبة السياسات (<span>{policiesCount}</span>)
             </button>
+
+            {onToggleSidebar && (
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 flex items-center gap-1.5"
+                title="عرض شجرة أقسام وسياسات المستشفى"
+              >
+                <span>📂</span>
+                <span>أقسام المستشفى</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -354,6 +368,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {policiesCount}
                 </span>
               </button>
+
+              {onToggleSidebar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onToggleSidebar();
+                  }}
+                  className="w-full text-right px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 cursor-pointer"
+                >
+                  <span>📂</span>
+                  <span>دليل الأقسام والسياسات</span>
+                </button>
+              )}
 
               <button
                 type="button"

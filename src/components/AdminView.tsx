@@ -10,6 +10,7 @@ import {
   generateSlidesFromHtml
 } from '../services/aiAndParsers';
 import { PDFDocument } from 'pdf-lib';
+import { JsonImportModal } from './JsonImportModal';
 
 interface AdminViewProps {
   policies?: Policy[];
@@ -23,6 +24,7 @@ interface AdminViewProps {
   onShowToast: (message: string) => void;
   onUpdateSettings: (settings: SystemSettings) => void;
   onSeedFirestore?: () => Promise<void>;
+  onImportPolicies?: (imported: Policy[]) => Promise<void>;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -37,9 +39,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onShowToast,
   onUpdateSettings,
   onSeedFirestore,
+  onImportPolicies,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
+  const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -423,6 +427,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
               <span>مزامنة كافة السياسات إلى Firestore</span>
             </button>
           )}
+          {onImportPolicies && (
+            <button
+              type="button"
+              onClick={() => setIsJsonModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="استيراد كود JSON أو ملف دفعات مباشرة إلى الموقع وقاعدة البيانات"
+            >
+              <span>📥</span>
+              <span>استيراد كود JSON</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onExportJson}
@@ -523,7 +538,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Word Upload */}
           <div className="p-5 rounded-2xl bg-teal-50/50 border border-teal-200 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
@@ -545,7 +560,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <div className="p-5 rounded-2xl bg-red-50/50 border border-red-200 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📑</span>
-              <h4 className="font-extrabold text-red-950 text-sm">ملفات PDF و PPTX (Gemini AI)</h4>
+              <h4 className="font-extrabold text-red-950 text-sm">ملفات PDF (Gemini AI)</h4>
               <p className="text-xs text-red-800 leading-relaxed font-semibold">
                 معالجة ذكية دقيقة باللغة العربية عبر نموذج <code>gemini-2.5-flash</code> مع ميزة تحديد نطاق الصفحات.
               </p>
@@ -572,6 +587,26 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <span>إرفاق صورة / مخطط</span>
                 <input type="file" accept="image/*" onChange={handleCloudinaryUpload} className="hidden" />
               </label>
+            </div>
+          </div>
+
+          {/* 4. Direct JSON Batch Importer */}
+          <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-center space-y-3 flex flex-col justify-between">
+            <div className="space-y-2">
+              <span className="text-3xl">📥</span>
+              <h4 className="font-extrabold text-amber-950 dark:text-amber-200 text-sm">استيراد كود JSON ودفعات</h4>
+              <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed font-semibold">
+                الصق كود الـ JSON أو ارفع ملف دفعات ليظهر فوراً في الموقع ويتحفظ بالسحابة تلقائياً.
+              </p>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsJsonModalOpen(true)}
+                className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-sm cursor-pointer"
+              >
+                <span>فتح مستورد JSON ⚡</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1068,6 +1103,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* JSON Batch Import Modal */}
+      {isJsonModalOpen && onImportPolicies && (
+        <JsonImportModal
+          isOpen={isJsonModalOpen}
+          onClose={() => setIsJsonModalOpen(false)}
+          onImportPolicies={onImportPolicies}
+          onShowToast={onShowToast}
+        />
+      )}
     </section>
   );
 };
