@@ -184,8 +184,6 @@ export async function processPdfWithGemini(
 }
 `;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
   const requestBody = {
     contents: [
       {
@@ -208,15 +206,30 @@ export async function processPdfWithGemini(
     }
   };
 
-  const response = await fetch(url, {
+  // Use modern Gemini Flash model
+  let modelName = 'gemini-3.8-flash';
+  let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  let response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody)
   });
 
+  // Fallback to gemini-flash-latest if 3.8-flash is not available on user's key
+  if (!response.ok && response.status === 404) {
+    modelName = 'gemini-flash-latest';
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+  }
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `HTTP ${response.status}: فشل الاتصال بنموذج Gemini`);
+    throw new Error(errorData.error?.message || `HTTP ${response.status}: فشل الاتصال بنموذج الذكاء الاصطناعي`);
   }
 
   const data = await response.json();

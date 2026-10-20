@@ -58,13 +58,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       <div className="rounded-3xl p-6 sm:p-10 text-white shadow-xl relative overflow-hidden bg-slate-950 border border-slate-800">
         {/* Hospital Building Photo - Prominently Displayed */}
         <div
-          className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-40 transition-opacity"
+          className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-65 transition-opacity"
           style={{ backgroundImage: `url('/assets/hospital-bg.jpg')` }}
           aria-hidden="true"
         ></div>
 
-        {/* Gradient overlay for 100% crystal-clear readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/85 to-slate-950/65 pointer-events-none"></div>
+        {/* Gradient overlay for crystal-clear readability while keeping building visible */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-slate-950/40 pointer-events-none"></div>
 
         <div className="relative z-10 max-w-3xl space-y-5">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 text-xs font-bold backdrop-blur-sm">

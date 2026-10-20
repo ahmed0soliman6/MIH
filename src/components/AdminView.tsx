@@ -192,7 +192,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onUpdateSettings({ ...settings, geminiKey: apiKey });
     }
 
-    onShowLoading(true, `جاري استخراج الصفحات من (${pdfStartPage}) إلى (${pdfEndPage}) وإرسالها لنموذج Gemini 2.5 Flash...`);
+    onShowLoading(true, `جاري استخراج الصفحات من (${pdfStartPage}) إلى (${pdfEndPage}) وتحليلها بأحدث نموذج ذكاء اصطناعي (Gemini 3.8 Flash) فائق السرعة والدقة...`);
     try {
       const res = await processPdfWithGemini(pdfFile.doc, pdfStartPage, pdfEndPage, apiKey);
       setTitle(res.title);
@@ -538,7 +538,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </p>
               </div>
               <span className="text-xs bg-teal-900/60 text-teal-300 px-3 py-1 rounded-full border border-teal-700">
-                Gemini 2.5 Flash Parser
+                Gemini 3.8 Flash (Latest AI Engine)
               </span>
             </div>
 
