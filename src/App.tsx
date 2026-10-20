@@ -123,8 +123,23 @@ export const App: React.FC = () => {
 
     if (isConfigured && db && auth) {
       unsubscribePolicies = subscribeToPolicies(db, (remotePolicies) => {
-        setPolicies(remotePolicies);
-        saveCachedPolicies(remotePolicies);
+        const merged = [...(remotePolicies || [])];
+        let hasMissing = false;
+        DEFAULT_POLICIES.forEach((defP) => {
+          if (!merged.some((p) => p.id === defP.id || p.code === defP.code)) {
+            merged.push(defP);
+            hasMissing = true;
+          }
+        });
+        setPolicies(merged);
+        saveCachedPolicies(merged);
+
+        // Auto-seed to Firestore if remote is missing the 10 official policies
+        if (hasMissing && db) {
+          seedFirestoreWithDefaults(db, DEFAULT_POLICIES, 'admin@mih-quality.gov.eg').catch((e) => {
+            console.warn('Auto-seed to Firestore background notice:', e);
+          });
+        }
       });
 
       // Realtime subscription to authorized admin emails from Firestore
@@ -552,6 +567,7 @@ export const App: React.FC = () => {
 
         {currentTab === 'admin' && (
           <AdminView
+            policies={policies}
             editingPolicy={editingPolicy}
             settings={settings}
             onSavePolicy={handleSavePolicy}

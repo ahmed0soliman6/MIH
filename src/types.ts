@@ -21,16 +21,21 @@ export interface Policy {
   category: CategoryKey;
   dept: string;
   version: string;
-  date: string;
+  date?: string;
   purpose: string;
   content_html: string;
   plain_text: string;
   slides: Slide[];
   images?: string[];
   notes?: string;
+  source?: string;
+  effectiveDate?: string;
+  reviewDate?: string;
+  responsibilities?: string | string[];
   created_at?: string;
   updated_at?: string;
   author_email?: string;
+  [key: string]: any;
 }
 
 export interface BundleItem {

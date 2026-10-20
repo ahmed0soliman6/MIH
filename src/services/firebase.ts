@@ -18,7 +18,10 @@ import {
   setDoc, 
   deleteDoc, 
   Firestore,
-  DocumentData
+  DocumentData,
+  QuerySnapshot,
+  QueryDocumentSnapshot,
+  DocumentSnapshot
 } from 'firebase/firestore';
 import { Policy, AuthUser, SystemSettings } from '../types';
 
@@ -81,10 +84,10 @@ export function subscribeToPolicies(
 
   try {
     const coll = collection(db, 'policies');
-    return onSnapshot(coll, (snapshot) => {
+    return onSnapshot(coll, (snapshot: QuerySnapshot<DocumentData>) => {
       if (!snapshot.empty) {
         const list: Policy[] = [];
-        snapshot.forEach((d) => {
+        snapshot.forEach((d: QueryDocumentSnapshot<DocumentData>) => {
           const data = d.data() as DocumentData;
           list.push({
             id: d.id,
@@ -107,7 +110,7 @@ export function subscribeToPolicies(
         });
         onData(list);
       }
-    }, (err) => {
+    }, (err: any) => {
       console.warn('Firestore subscription error:', err);
       if (onError) onError(err);
     });
@@ -206,16 +209,16 @@ export function subscribeToWhitelist(
     const docRef = doc(db, 'settings', 'admin_whitelist');
     unsubSettings = onSnapshot(
       docRef,
-      (snap) => {
+      (snap: DocumentSnapshot<DocumentData>) => {
         if (snap.exists()) {
           const data = snap.data();
-          if (Array.isArray(data.emails)) {
+          if (data && Array.isArray(data.emails)) {
             settingsEmails = data.emails.map((e: string) => e.trim().toLowerCase()).filter(Boolean);
             broadcastCombined();
           }
         }
       },
-      (err) => {
+      (err: any) => {
         console.warn('Settings whitelist subscription notice:', err.message);
       }
     );
@@ -223,9 +226,9 @@ export function subscribeToWhitelist(
     const adminsColl = collection(db, 'admins');
     unsubAdmins = onSnapshot(
       adminsColl,
-      (snap) => {
+      (snap: QuerySnapshot<DocumentData>) => {
         const found: string[] = [];
-        snap.forEach((d) => {
+        snap.forEach((d: QueryDocumentSnapshot<DocumentData>) => {
           const data = d.data();
           const em = (data.email || d.id || '').trim().toLowerCase();
           if (em && em.includes('@')) {
@@ -235,7 +238,7 @@ export function subscribeToWhitelist(
         adminsCollEmails = found;
         broadcastCombined();
       },
-      (err) => {
+      (err: any) => {
         console.warn('Admins collection subscription notice:', err.message);
       }
     );
@@ -297,7 +300,7 @@ export async function fetchWhitelistFromFirestore(db: Firestore | null): Promise
     try {
       const adminsColl = collection(db, 'admins');
       const adminSnaps = await getDocs(adminsColl);
-      adminSnaps.forEach((d) => {
+      adminSnaps.forEach((d: QueryDocumentSnapshot<DocumentData>) => {
         const data = d.data();
         const em = data.email || d.id;
         if (typeof em === 'string' && em.includes('@')) {

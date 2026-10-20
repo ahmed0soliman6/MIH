@@ -12,6 +12,7 @@ import {
 import { PDFDocument } from 'pdf-lib';
 
 interface AdminViewProps {
+  policies?: Policy[];
   editingPolicy: Policy | null;
   settings: SystemSettings;
   onSavePolicy: (policy: Policy) => Promise<void>;
@@ -25,6 +26,7 @@ interface AdminViewProps {
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
+  policies,
   editingPolicy,
   settings,
   onSavePolicy,
@@ -37,6 +39,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onSeedFirestore,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
 
   // Form state
   const [title, setTitle] = useState('');
@@ -103,23 +106,45 @@ export const AdminView: React.FC<AdminViewProps> = ({
     onShowToast(`تمت إزالة البريد (${emailToRemove}) من قائمة المديرين.`);
   };
 
+  const loadPolicy = (p: Policy) => {
+    setTitle(p.title || '');
+    setCode(p.code || '');
+    setCategory(p.category || 'QPI');
+    setDept(p.dept || '');
+    setVersion(p.version || 'الإصدار 1.0');
+    setDate(p.date || getArabicCurrentMonthYear());
+    setPurpose(p.purpose || '');
+    setContentHtml(p.content_html || '');
+    setSlides(p.slides ? JSON.parse(JSON.stringify(p.slides)) : []);
+    setImages(p.images ? [...p.images] : []);
+  };
+
   useEffect(() => {
     if (editingPolicy) {
-      setTitle(editingPolicy.title || '');
-      setCode(editingPolicy.code || '');
-      setCategory(editingPolicy.category || 'QPI');
-      setDept(editingPolicy.dept || '');
-      setVersion(editingPolicy.version || 'الإصدار 1.0');
-      setDate(editingPolicy.date || getArabicCurrentMonthYear());
-      setPurpose(editingPolicy.purpose || '');
-      setContentHtml(editingPolicy.content_html || '');
-      setSlides(editingPolicy.slides ? JSON.parse(JSON.stringify(editingPolicy.slides)) : []);
-      setImages(editingPolicy.images ? [...editingPolicy.images] : []);
+      loadPolicy(editingPolicy);
+      setSelectedPolicyId(editingPolicy.id);
       setEditorTab('edit-fields');
-    } else {
-      resetFields();
+    } else if (policies && policies.length > 0 && !selectedPolicyId && !title) {
+      loadPolicy(policies[0]);
+      setSelectedPolicyId(policies[0].id);
     }
-  }, [editingPolicy]);
+  }, [editingPolicy, policies]);
+
+  const handleSelectPolicy = (id: string) => {
+    if (id === 'new') {
+      resetFields();
+      setSelectedPolicyId('new');
+      onResetEditor();
+      setEditorTab('edit-fields');
+      return;
+    }
+    const target = policies?.find((p) => p.id === id);
+    if (target) {
+      loadPolicy(target);
+      setSelectedPolicyId(target.id);
+      onShowToast(`تم تحميل السياسة: ${target.code} - ${target.title}`);
+    }
+  };
 
   const resetFields = () => {
     setTitle('');
@@ -133,6 +158,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setSlides([]);
     setImages([]);
     setPdfFile(null);
+    setSelectedPolicyId('new');
   };
 
   // Word File Handler
@@ -338,7 +364,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     const policyToSave: Policy = {
-      id: editingPolicy?.id || `pol-${Date.now()}`,
+      id: editingPolicy?.id || (selectedPolicyId && selectedPolicyId !== 'new' ? selectedPolicyId : `pol-${Date.now()}`),
       title: title.trim(),
       code: code.trim(),
       category,
@@ -610,6 +636,49 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
       {/* Card 2: Policy Editor & Preview */}
       <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+        {/* Policy Quick Selector Banner */}
+        {policies && policies.length > 0 && (
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📑</span>
+              <div>
+                <span className="text-xs font-bold text-teal-950 dark:text-teal-200 block">
+                  اختيار سياسة للتعديل والمعاينة الفورية بالمحاكي ({policies.length} سياسة متوفرة):
+                </span>
+                <span className="text-[11px] text-teal-800 dark:text-teal-300">
+                  حدد أي سياسة لعرض شرائحها ووثيقتها أو إنشاء سياسة جديدة
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-grow sm:flex-grow-0">
+              <select
+                value={selectedPolicyId}
+                onChange={(e) => handleSelectPolicy(e.target.value)}
+                className="w-full sm:w-auto px-3.5 py-2 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
+              >
+                <option value="new">➕ إنشاء سياسة جديدة فارغة</option>
+                {policies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} - {p.title} ({p.slides?.length || 0} شريحة)
+                  </option>
+                ))}
+              </select>
+
+              {selectedPolicyId !== 'new' && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectPolicy('new')}
+                  className="px-3 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 hover:bg-teal-100 dark:hover:bg-slate-700 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700 transition cursor-pointer whitespace-nowrap"
+                  title="تفريغ الحقول لإنشاء سياسة جديدة"
+                >
+                  ➕ جديدة
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
             <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
