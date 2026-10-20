@@ -29,7 +29,16 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   onDeletePolicy,
   onAddPolicy,
 }) => {
+  const [sourceFilter, setSourceFilter] = React.useState<'ALL' | 'MANUAL' | 'CORE'>('ALL');
+
+  const manualPoliciesCount = policies.filter((p) => p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد')).length;
+  const corePoliciesCount = policies.filter((p) => !p.dept?.includes('المجلد الشامل') && !p.notes?.includes('المجلد')).length;
+
   const filtered = policies.filter((p) => {
+    const isManual = p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد');
+    if (sourceFilter === 'MANUAL' && !isManual) return false;
+    if (sourceFilter === 'CORE' && isManual) return false;
+
     const matchCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
     const blob = `${p.title} ${p.code} ${p.dept} ${p.purpose} ${p.plain_text || ''}`.toLowerCase();
     const matchQuery = !searchQuery || blob.includes(searchQuery.trim().toLowerCase());
@@ -58,6 +67,56 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             <span>إضافة أو رفع سياسة جديدة</span>
           </button>
         )}
+      </div>
+
+      {/* Source Filter Tabs: All vs 320-page Manual vs Core Standards */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setSourceFilter('ALL')}
+          className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            sourceFilter === 'ALL'
+              ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>📚 جميع السياسات</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+            {policies.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSourceFilter('MANUAL')}
+          className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            sourceFilter === 'MANUAL'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'text-amber-800 dark:text-amber-400 hover:bg-amber-100/50 dark:hover:bg-amber-950/40'
+          }`}
+        >
+          <span>📖 سياسات المجلد الشامل (320 صفحة)</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+            sourceFilter === 'MANUAL' ? 'bg-amber-800 text-white' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+          }`}>
+            {manualPoliciesCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSourceFilter('CORE')}
+          className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            sourceFilter === 'CORE'
+              ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>⭐ معايير أمان وسلامة المرضى (NSR)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+            {corePoliciesCount}
+          </span>
+        </button>
       </div>
 
       {/* Search and Filters */}
@@ -104,6 +163,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             onClick={() => {
               onSearchChange('');
               onCategoryChange('ALL');
+              setSourceFilter('ALL');
             }}
             className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition cursor-pointer"
           >
@@ -115,19 +175,28 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
           {filtered.map((p) => {
             const meta = CATEGORY_META[p.category] || CATEGORY_META.QPI;
             const slidesCount = Array.isArray(p.slides) ? p.slides.length : 0;
+            const isManual = p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد');
             return (
               <article
                 key={p.id}
                 className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-teal-500 dark:hover:border-teal-500 transition-all flex flex-col justify-between p-5 space-y-4"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${meta.badge}`}>
                       {p.code} • {meta.name.split(' ')[0]}
                     </span>
-                    <span className="text-xs text-slate-400 dark:text-slate-500 font-bold">
-                      {p.version || 'الإصدار 1.0'}
-                    </span>
+
+                    {isManual ? (
+                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                        <span>📖</span>
+                        <span>مجلد الـ 320 صفحة</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-bold">
+                        {p.version || 'الإصدار 1.0'}
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="text-base font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2">

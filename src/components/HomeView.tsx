@@ -166,6 +166,55 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
+      {/* Showcase: 320-page Hospital Manual Policies */}
+      <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-teal-950/80 border border-amber-500/30 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 text-xs font-bold">
+              <span>📖</span>
+              <span>مجلد سياسات المستشفى الشامل • 320 صفحة</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">
+              سياسات وإجراءات العمل المستخرجة من المجلد التشغيلي المعتمد
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-semibold">
+              تم استخلاص وتحويل السياسات التشغيلية الحيوية من مجلد الجودة الشامل (320 صفحة - 25MB) إلى بطاقات تفاعلية وشرائح عرض تدريبية مع رقم الصفحة الأصلي، لتصفح فوري فائق السرعة بدون استهلاك أي مساحة لتخزين الملف الخام.
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-amber-200/90 pt-1">
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">صندوق الأمان والنفايات (ص 49)</span>
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">الانسكابات وسوائل الجسم (ص 57)</span>
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">السيدكس والتطهير (ص 37)</span>
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">وخز الإبر (ص 128)</span>
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">غرف العزل (ص 171)</span>
+              <span className="bg-white/10 px-2.5 py-1 rounded-lg">نقل الدم (ص 203)</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                onSearchQuery('المجلد الشامل');
+                onNavigateTab('policies');
+              }}
+              className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>📖</span>
+              <span>تصفح سياسات المجلد (12 سياسة)</span>
+              <span>←</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('policies')}
+              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition border border-white/20 text-center cursor-pointer"
+            >
+              عرض كافة سياسات الجودة ({policies.length})
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Quality Categories Cards (High Contrast in Light and Dark Mode) */}
       <div className="space-y-4">
         <div>

@@ -1,0 +1,241 @@
+/* ==========================================================================
+   نظام سياسات الجودة - مستشفى المنصورة الدولي
+   Hospital Quality Policies System - Custom Styles
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --mih-red: #991b1b;
+  --mih-red-dark: #7f1d1d;
+  --mih-red-light: #fef2f2;
+  --mih-teal: #0f766e;
+  --mih-teal-dark: #115e59;
+  --mih-teal-light: #f0fdfa;
+}
+
+body {
+  font-family: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  overflow-x: hidden;
+}
+
+/* التدرج اللوني للهيدر والبانر الرئيسي */
+.hero-gradient {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 118, 110, 0.88) 55%, rgba(153, 27, 27, 0.88) 100%);
+}
+
+.hero-mesh {
+  background-color: #0f172a;
+  background-image: radial-gradient(at 10% 20%, rgba(15, 118, 110, 0.35) 0px, transparent 50%),
+                    radial-gradient(at 90% 80%, rgba(153, 27, 27, 0.3) 0px, transparent 50%),
+                    radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.9) 0px, transparent 50%);
+}
+
+/* شريط التمرير المخصص */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* تنسيق محتوى الوثيقة الغني (HTML Policy Content) */
+.policy-content-html {
+  line-height: 1.85;
+  color: #1e293b;
+  font-size: 0.975rem;
+}
+
+.policy-content-html h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.policy-content-html h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f766e;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.policy-content-html h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #334155;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.policy-content-html p {
+  margin-bottom: 0.85rem;
+  text-align: justify;
+}
+
+.policy-content-html ul {
+  list-style-type: disc;
+  margin-right: 1.5rem;
+  margin-bottom: 1rem;
+  space-y: 0.4rem;
+}
+
+.policy-content-html ol {
+  list-style-type: decimal;
+  margin-right: 1.5rem;
+  margin-bottom: 1rem;
+  space-y: 0.4rem;
+}
+
+.policy-content-html li {
+  margin-bottom: 0.35rem;
+}
+
+.policy-content-html table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.policy-content-html th {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd5e1;
+  text-align: right;
+}
+
+.policy-content-html td {
+  padding: 0.65rem 1rem;
+  border: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.policy-content-html tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.policy-content-html blockquote {
+  border-right: 4px solid #0f766e;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  background-color: #f0fdfa;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-weight: 500;
+  color: #134e4a;
+}
+
+.policy-content-html figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.policy-content-html figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 0 auto;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.policy-content-html figure figcaption {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* أنماط عارض الشرائح التفاعلي (Presentation Mode) */
+.slide-active {
+  animation: slideFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.slide-bullet {
+  transition: all 0.25s ease;
+}
+.slide-bullet:hover {
+  transform: translateX(-4px);
+}
+
+/* تنسيق الطباعة المعتمد للمستشفيات (Hospital Print Engine) */
+@media print {
+  .no-print,
+  #nav-header,
+  #top-banner,
+  #toast-box,
+  footer,
+  .print-hide {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-document-mode {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .print-page-break {
+    page-break-before: always;
+  }
+
+  .print-header-seal {
+    border-bottom: 2px solid #000000 !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  table {
+    page-break-inside: avoid;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
