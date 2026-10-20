@@ -57,6 +57,42 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [pdfStartPage, setPdfStartPage] = useState<number>(1);
   const [pdfEndPage, setPdfEndPage] = useState<number>(5);
 
+  // Admin Whitelist management state
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+
+  const handleAddAdminEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newAdminEmail.trim().toLowerCase();
+    if (!clean) return;
+    if (!clean.includes('@') || !clean.includes('.')) {
+      onShowToast('يرجى إدخال بريد إلكتروني صالح');
+      return;
+    }
+    const currentList = settings.adminEmails || [];
+    if (currentList.some((em) => em.trim().toLowerCase() === clean)) {
+      onShowToast('هذا البريد مسجل بالفعل في قائمة المديرين');
+      return;
+    }
+    const updated = [...currentList, clean];
+    onUpdateSettings({ ...settings, adminEmails: updated });
+    setNewAdminEmail('');
+    onShowToast(`تم اعتماد البريد (${clean})! يستطيع الآن الدخول فوراً عبر حساب Google كمدير معتمد 👑`);
+  };
+
+  const handleRemoveAdminEmail = (emailToRemove: string) => {
+    const currentList = settings.adminEmails || [];
+    if (currentList.length <= 1) {
+      alert('يجب الإبقاء على بريد إداري واحد على الأقل في القائمة.');
+      return;
+    }
+    if (!confirm(`هل أنت متأكد من رغبتك في إزالة البريد (${emailToRemove}) من قائمة مديري الجودة المعتمدين؟`)) {
+      return;
+    }
+    const updated = currentList.filter((em) => em.trim().toLowerCase() !== emailToRemove.trim().toLowerCase());
+    onUpdateSettings({ ...settings, adminEmails: updated });
+    onShowToast(`تمت إزالة البريد (${emailToRemove}) من قائمة المديرين.`);
+  };
+
   useEffect(() => {
     if (editingPolicy) {
       setTitle(editingPolicy.title || '');
@@ -324,17 +360,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
   return (
     <section className="space-y-6">
       {/* Admin header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               لوحة إدارة الجودة والتحويل الذكي
             </h2>
-            <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">
+            <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-200 dark:border-red-900">
               صلاحية المدير
             </span>
           </div>
-          <p className="text-xs text-slate-500 font-semibold">
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
             رفع واستخراج السياسات الذكية وتوليد الشرائح وحفظها في Firestore
           </p>
         </div>
@@ -343,7 +379,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <button
             type="button"
             onClick={onExportJson}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
           >
             <span>📥</span>
             <span>تصدير نسخة JSON</span>
@@ -351,7 +387,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <button
             type="button"
             onClick={onResetDefaults}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-red-50 text-red-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950 text-red-700 dark:text-red-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
           >
             <span>🔄</span>
             <span>استعادة الافتراضي</span>
@@ -359,8 +395,70 @@ export const AdminView: React.FC<AdminViewProps> = ({
         </div>
       </div>
 
+      {/* Card 0: Admin Whitelist Management (User Requested Feature) */}
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span>👥</span>
+              <span>إدارة قائمة مديري الجودة المعتمدين (Google Login Whitelist)</span>
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+              أي بريد إلكتروني يُضاف هنا، يستطيع صاحبه الضغط على زر <em>«دخول الإدارة (Google)»</em> والدخول فوراً كمدير معتمد بصلاحيات كاملة
+            </p>
+          </div>
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
+            {settings.adminEmails?.length || 0} مديرين معتمدين
+          </span>
+        </div>
+
+        {/* Add Email Form */}
+        <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="email"
+            value={newAdminEmail}
+            onChange={(e) => setNewAdminEmail(e.target.value)}
+            placeholder="أدخل البريد الإلكتروني الجديد للمدير (مثال: doctor@gmail.com)..."
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+          />
+          <button
+            type="submit"
+            className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+          >
+            <span>➕</span>
+            <span>اعتماد مدير جديد</span>
+          </button>
+        </form>
+
+        {/* Whitelist Chips Grid */}
+        <div className="space-y-2 pt-1">
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+            الإيميلات المعتمدة حالياً لدخول الإدارة:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(settings.adminEmails || []).map((email) => (
+              <div
+                key={email}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <span>👑</span>
+                <span className="font-mono">{email}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAdminEmail(email)}
+                  className="text-slate-400 hover:text-red-500 font-bold p-0.5 rounded transition cursor-pointer"
+                  title="إزالة هذا البريد من الإدارة"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Card 1: Smart AI Upload Engine */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
         <div>
           <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
             <span>🚀</span>
@@ -483,26 +581,26 @@ export const AdminView: React.FC<AdminViewProps> = ({
       </div>
 
       {/* Card 2: Policy Editor & Preview */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
-            <h3 className="text-base sm:text-lg font-black text-slate-900">
+            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
               محرر ومعاينة السياسة (Policy Editor & Preview)
             </h3>
-            <p className="text-xs text-slate-500 font-semibold">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
               راجع وعدّل الحقول والشرائح، وتأكد من المعاينة قبل الحفظ في السحابة
             </p>
           </div>
 
           {/* Editor Tabs */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
             <button
               type="button"
               onClick={() => setEditorTab('edit-fields')}
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
                 editorTab === 'edit-fields'
                   ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-200'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               ✏️ تحرير الحقول والشرائح
@@ -513,7 +611,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
                 editorTab === 'preview-doc'
                   ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-200'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               📖 معاينة الوثيقة الرسمية
@@ -524,7 +622,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
                 editorTab === 'preview-slides'
                   ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-200'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               📽️ محاكي عارض الشرائح
@@ -537,7 +635,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="lg:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   عنوان السياسة الرسمي *
                 </label>
                 <input
@@ -546,12 +644,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="مثال: سياسة الوقاية من الجلطات الوريدية العميقة..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   كود السياسة (Policy Code) *
                 </label>
                 <input
@@ -560,18 +658,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="مثال: MIH-NSR-005"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold font-mono text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   القسم / التصنيف *
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as CategoryKey)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-teal-600 outline-none cursor-pointer"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none cursor-pointer"
                 >
                   {(Object.keys(CATEGORY_META) as CategoryKey[]).map((k) => (
                     <option key={k} value={k}>
@@ -582,7 +680,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </div>
 
               <div className="lg:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   الأقسام المستهدفة بالمستشفى *
                 </label>
                 <input
@@ -591,12 +689,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   value={dept}
                   onChange={(e) => setDept(e.target.value)}
                   placeholder="مثال: الأقسام الداخلية، العنايات المركزة، والعمليات..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   رقم الإصدار
                 </label>
                 <input
@@ -604,12 +702,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
                   placeholder="الإصدار 1.0"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   تاريخ الاعتماد
                 </label>
                 <input
@@ -617,14 +715,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   placeholder="أكتوبر 2026"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
                 />
               </div>
             </div>
 
             {/* Purpose */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                 الهدف العام من السياسة (Policy Purpose) *
               </label>
               <textarea
@@ -633,14 +731,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}
                 placeholder="اكتب الهدف الإكلينيكي أو الإداري المباشر من تطبيق السياسة..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
               ></textarea>
             </div>
 
             {/* Rich HTML Content */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   محتوى السياسة الكامل (HTML Rich Content) *
                 </label>
                 <span className="text-[11px] text-slate-400">
@@ -653,18 +751,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 value={contentHtml}
                 onChange={(e) => setContentHtml(e.target.value)}
                 placeholder="اكتب أو الصق نص السياسة المنسق بـ HTML هنا (أو استخدم الرفع التلقائي لملفات Word/PDF)..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-800 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
               ></textarea>
             </div>
 
             {/* Slides Builder */}
-            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-black text-slate-900 text-sm">
+                  <h4 className="font-black text-slate-900 dark:text-white text-sm">
                     محرر شرائح العرض التقديمي (Interactive Slides Deck)
                   </h4>
-                  <p className="text-xs text-slate-500 font-semibold">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
                     تُستخدم هذه الشرائح في وضع العرض التقديمي وشاشات التدريب
                   </p>
                 </div>

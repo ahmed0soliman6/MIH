@@ -167,6 +167,42 @@ body {
   font-weight: 600;
 }
 
+/* Dark Mode Rich HTML Content Rules */
+.dark .policy-content-html {
+  color: #e2e8f0;
+}
+.dark .policy-content-html h2 {
+  color: #ffffff;
+  border-bottom-color: #334155;
+}
+.dark .policy-content-html h3 {
+  color: #2dd4bf;
+}
+.dark .policy-content-html h4 {
+  color: #cbd5e1;
+}
+.dark .policy-content-html table {
+  background-color: #0f172a;
+  border-color: #334155;
+}
+.dark .policy-content-html th {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+}
+.dark .policy-content-html td {
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.dark .policy-content-html tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.4);
+}
+.dark .policy-content-html blockquote {
+  background-color: #042f2e;
+  color: #5eead4;
+  border-right-color: #14b8a6;
+}
+
 /* Presentation Slide Animation */
 .slide-active {
   animation: slideFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;

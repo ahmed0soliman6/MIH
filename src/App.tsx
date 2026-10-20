@@ -13,12 +13,13 @@ import {
   initFirebaseService,
   subscribeToPolicies,
   subscribeToAuth,
+  subscribeToWhitelist,
+  saveWhitelistToFirestore,
   loginWithGoogle,
   logoutUser,
   savePolicyToFirestore,
   deletePolicyFromFirestore
 } from './services/firebase';
-import { TopBanner } from './components/TopBanner';
 import { Navbar, TabType } from './components/Navbar';
 import { HomeView } from './components/HomeView';
 import { PoliciesView } from './components/PoliciesView';
@@ -39,6 +40,26 @@ export const App: React.FC = () => {
   const [policies, setPolicies] = useState<Policy[]>(getCachedPolicies);
   const [bundles, setBundles] = useState<Bundle[]>(getCachedBundles);
   const [currentTab, setCurrentTab] = useState<TabType>('home');
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('mih_dark_mode') === 'true';
+  });
+
+  // Sync dark class on documentElement for complete HTML/body styling
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('mih_dark_mode', String(next));
+      return next;
+    });
+  };
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,11 +115,23 @@ export const App: React.FC = () => {
 
     let unsubscribePolicies = () => {};
     let unsubscribeAuth = () => {};
+    let unsubscribeWhitelist = () => {};
 
     if (isConfigured && db && auth) {
       unsubscribePolicies = subscribeToPolicies(db, (remotePolicies) => {
         setPolicies(remotePolicies);
         saveCachedPolicies(remotePolicies);
+      });
+
+      // Realtime subscription to authorized admin emails from Firestore
+      unsubscribeWhitelist = subscribeToWhitelist(db, (remoteEmails) => {
+        if (remoteEmails && remoteEmails.length > 0) {
+          setSettings((prev) => {
+            const updated = { ...prev, adminEmails: remoteEmails };
+            saveStoredSettings(updated);
+            return updated;
+          });
+        }
       });
 
       unsubscribeAuth = subscribeToAuth(auth, (user) => {
@@ -107,7 +140,7 @@ export const App: React.FC = () => {
           const authorized = checkAdminWhitelist(user.email);
           setIsAuthorizedAdmin(authorized);
           if (authorized) {
-            showToast(`مرحباً بك: ${user.displayName || user.email} (مدير جودة معتمد)`);
+            showToast(`مرحباً بك: ${user.displayName || user.email} (مدير جودة معتمد) 👑`);
           } else {
             setPermissionDeniedEmail(user.email);
           }
@@ -120,8 +153,9 @@ export const App: React.FC = () => {
     return () => {
       unsubscribePolicies();
       unsubscribeAuth();
+      unsubscribeWhitelist();
     };
-  }, [settings]);
+  }, [settings.firebase]);
 
   // Restore saved session on mount
   useEffect(() => {
@@ -154,7 +188,7 @@ export const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     if (!isFirebaseConnected || !fbRef.current.auth) {
       throw new Error(
-        'لم يتم تهيئة إعدادات Firebase بعد. يرجى إدخال مفاتيح المشروع في الإعدادات أو استخدام خيار الدخول المباشر بالبريد الإداري.'
+        'لم يتم تهيئة إعدادات Firebase بعد. يرجى إدخال مفاتيح المشروع في الإعدادات.'
       );
     }
     const user = await loginWithGoogle(fbRef.current.auth);
@@ -168,25 +202,6 @@ export const App: React.FC = () => {
       } else {
         setPermissionDeniedEmail(user.email);
       }
-    }
-  };
-
-  // Direct Whitelist Email Login
-  const handleDirectEmailLogin = (email: string) => {
-    const cleanEmail = email.trim();
-    const authorized = checkAdminWhitelist(cleanEmail);
-    if (authorized) {
-      const user: AuthUser = {
-        displayName: cleanEmail.split('@')[0],
-        email: cleanEmail,
-        photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanEmail)}&background=0f766e&color=fff`
-      };
-      setCurrentUser(user);
-      setIsAuthorizedAdmin(true);
-      localStorage.setItem('mih_admin_session', JSON.stringify(user));
-      showToast(`مرحباً بك: ${cleanEmail} (مدير جودة معتمد) 👑`);
-    } else {
-      setPermissionDeniedEmail(cleanEmail);
     }
   };
 
@@ -331,32 +346,43 @@ export const App: React.FC = () => {
     }
   };
 
-  // Save Settings Modal
+  // Save Settings & Whitelist
   const handleSaveSettings = (newSettings: SystemSettings) => {
     setSettings(newSettings);
     saveStoredSettings(newSettings);
-    showToast('تم حفظ الإعدادات وتحديث المفاتيح بنجاح');
+
+    // Sync whitelist to Firestore if connected
+    if (isFirebaseConnected && fbRef.current.db) {
+      saveWhitelistToFirestore(fbRef.current.db, newSettings.adminEmails);
+    }
+
+    showToast('تم حفظ الإعدادات وتحديث قائمة المديرين المعتمدين بنجاح');
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-teal-600 selection:text-white">
-      {/* Top hospital banner */}
-      <TopBanner
-        isFirebaseConnected={isFirebaseConnected}
-        currentUser={currentUser}
-        isAuthorizedAdmin={isAuthorizedAdmin}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onLogin={handleOpenLogin}
-        onLogout={handleLogout}
-      />
-
-      {/* Main navigation header */}
+    <div
+      className={
+        darkMode
+          ? 'dark min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-teal-500 selection:text-white transition-colors duration-200'
+          : 'min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-teal-600 selection:text-white transition-colors duration-200'
+      }
+    >
+      {/* Main navigation header (TopBanner removed as requested; controls integrated directly here) */}
       <Navbar
         currentTab={currentTab}
         onTabChange={handleTabChange}
         policiesCount={policies.length}
         bundlesCount={bundles.length}
         isAuthorizedAdmin={isAuthorizedAdmin}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onLogin={handleOpenLogin}
+        onLogout={handleLogout}
+        currentUser={currentUser}
+        isFirebaseConnected={isFirebaseConnected}
+        activeReadingPolicy={activeDocPolicy}
+        onBackFromReading={() => setActiveDocPolicy(null)}
       />
 
       {/* Main Container */}
@@ -463,7 +489,6 @@ export const App: React.FC = () => {
         isFirebaseConfigured={isFirebaseConnected}
         onClose={() => setIsAdminLoginOpen(false)}
         onGoogleLogin={handleGoogleLogin}
-        onDirectEmailLogin={handleDirectEmailLogin}
       />
 
       <PermissionDeniedModal

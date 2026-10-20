@@ -180,3 +180,39 @@ export function subscribeToAuth(
     }
   });
 }
+
+export function subscribeToWhitelist(
+  db: Firestore | null,
+  onData: (emails: string[]) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'settings', 'admin_whitelist');
+    return onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.emails)) {
+          onData(data.emails);
+        }
+      }
+    }, (err) => {
+      console.warn('Whitelist subscription notice:', err.message);
+    });
+  } catch (e) {
+    return () => {};
+  }
+}
+
+export async function saveWhitelistToFirestore(db: Firestore | null, emails: string[]): Promise<boolean> {
+  if (!db) return false;
+  try {
+    await setDoc(doc(db, 'settings', 'admin_whitelist'), {
+      emails,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+    return true;
+  } catch (e) {
+    console.warn('Failed to save whitelist to Firestore:', e);
+    return false;
+  }
+}

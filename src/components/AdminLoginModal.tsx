@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthUser, SystemSettings } from '../types';
+import { SystemSettings } from '../types';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -7,7 +7,6 @@ interface AdminLoginModalProps {
   isFirebaseConfigured: boolean;
   onClose: () => void;
   onGoogleLogin: () => Promise<void>;
-  onDirectEmailLogin: (email: string) => void;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
@@ -16,9 +15,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isFirebaseConfigured,
   onClose,
   onGoogleLogin,
-  onDirectEmailLogin,
 }) => {
-  const [emailInput, setEmailInput] = useState('ahmed0soliman6@gmail.com');
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
 
@@ -35,14 +32,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       const code = err.code || err.message || '';
       if (code.includes('configuration-not-found')) {
         setGoogleError(
-          'لم يتم تفعيل موفر خدمة Google في مشروع Firebase (auth/configuration-not-found). يرجى تفعيله في Firebase Console أو استخدام خيار الدخول المباشر بالبريد الإداري أدناه.'
+          'لم يتم تفعيل موفر خدمة Google في Firebase Console (Authentication > Sign-in method > Google). يرجى تفعيله للسماح للمديرين بالدخول.'
         );
       } else if (code.includes('unauthorized-domain')) {
         setGoogleError(
-          'النطاق الحالي غير مضاف إلى Authorized Domains في Firebase Console. يمكنك استخدام الدخول المباشر بالبريد الإداري أدناه.'
+          'النطاق الحالي غير مصرح به في Firebase (Authentication > Settings > Authorized domains). أضف نطاق الموقع لتفعيل الدخول.'
         );
       } else if (code.includes('popup-closed-by-user')) {
-        setGoogleError('تم إغلاق نافذة تسجيل الدخول.');
+        setGoogleError('تم إغلاق نافذة تسجيل الدخول من قبل المستخدم.');
       } else {
         setGoogleError(err.message || 'حدث خطأ أثناء الاتصال بموفر Google.');
       }
@@ -51,146 +48,91 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
-  const handleDirectSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (emailInput.trim()) {
-      onDirectEmailLogin(emailInput.trim());
-      onClose();
-    }
-  };
-
-  const whitelistedEmails = settings.adminEmails || [];
+  const adminCount = (settings.adminEmails || []).length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full my-auto shadow-2xl p-6 sm:p-8 space-y-6">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md w-full my-auto shadow-2xl p-6 sm:p-8 space-y-6 transition-colors">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🔐</span>
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl p-2 rounded-2xl bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300">
+              🔐
+            </span>
             <div>
-              <h3 className="text-lg font-black text-slate-900">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                 تسجيل دخول إدارة الجودة
               </h3>
-              <p className="text-xs text-slate-500 font-semibold">
-                الوصول إلى لوحة إدارة السياسات والتحويل الذكي
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                مستشفى المنصورة الدولي (MIH)
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 font-bold text-lg cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition"
           >
             ✕
           </button>
         </div>
 
-        {/* Option 1: Google Login (Firebase Auth) */}
-        <div className="p-5 rounded-2xl bg-teal-50/60 border border-teal-200 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-extrabold text-teal-950">1. الدخول عبر حساب Google</span>
-            <span className="text-[10px] bg-teal-200 text-teal-800 px-2 py-0.5 rounded-full font-bold">
-              Firebase Auth
-            </span>
+        {/* Google Login Only */}
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                تسجيل دخول آمن بحساب Google
+              </span>
+              <span className="text-[10px] bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded-full font-bold">
+                Google Auth
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+              اضغط على الزر أدناه وسجل دخولك بحساب Google الخاص بك. إذا كان بريدك مسجلاً ضمن قائمة مديري الجودة المعتمدين ({adminCount} بريد مسجل)، سيتم منحك صلاحيات الإدارة فوراً.
+            </p>
           </div>
-          <p className="text-xs text-teal-900 leading-relaxed font-semibold">
-            تسجيل دخول آمن بحساب Google المرتبط بإدارة الجودة.
-          </p>
 
           <button
             type="button"
             onClick={handleGoogleSubmit}
             disabled={isGoogleLoading}
-            className="w-full py-2.5 px-4 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+            className="w-full py-3.5 px-4 rounded-2xl bg-teal-700 hover:bg-teal-800 active:scale-[0.99] text-white font-extrabold text-sm transition flex items-center justify-center gap-3 shadow-md cursor-pointer disabled:opacity-50"
           >
             {isGoogleLoading ? (
               <>
                 <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
-                <span>جاري الاتصال بـ Google...</span>
+                <span>جاري فتح نافذة تسجيل دخول Google...</span>
               </>
             ) : (
               <>
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
                   <path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z" />
                 </svg>
-                <span>تسجيل الدخول عبر Google</span>
+                <span>متابعة الدخول عبر حساب Google</span>
               </>
             )}
           </button>
 
           {googleError && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed font-semibold">
-              <span className="font-bold">⚠️ تنبيه: </span>
-              {googleError}
+            <div className="p-3.5 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-2xl text-xs text-red-900 dark:text-red-200 leading-relaxed font-semibold space-y-1">
+              <p className="font-bold">⚠️ تعذر تسجيل الدخول:</p>
+              <p>{googleError}</p>
             </div>
           )}
+
+          <div className="p-3 rounded-xl bg-teal-50/50 dark:bg-teal-950/30 border border-teal-100 dark:border-teal-900/40 text-[11px] text-teal-900 dark:text-teal-200 leading-relaxed">
+            💡 <strong>ملاحظة للمدير:</strong> يمكنك إضافة وتعديل قائمة إيميلات المديرين المعتمدين في أي وقت من خلال بطاقة <em>«إدارة مديري الجودة»</em> في لوحة التحكم الإدارية.
+          </div>
         </div>
 
-        {/* Option 2: Direct Admin Email Whitelist Login */}
-        <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-extrabold text-slate-900">
-              2. الدخول المباشر بالبريد الإداري المعتمد
-            </span>
-            <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
-              القائمة البيضاء
-            </span>
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed font-semibold">
-            إذا لم يكن حساب Google مفعلاً في Firebase، يمكنك الدخول المباشر فوراً باستخدام أي بريد معتمد في القائمة البيضاء:
-          </p>
-
-          {/* Quick select chips for whitelisted emails */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {whitelistedEmails.map((email) => (
-              <button
-                key={email}
-                type="button"
-                onClick={() => setEmailInput(email)}
-                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  emailInput.toLowerCase() === email.toLowerCase()
-                    ? 'bg-teal-700 text-white border-teal-700'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                {email}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleDirectSubmit} className="space-y-3 pt-2">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                البريد الإلكتروني للمدير
-              </label>
-              <input
-                type="email"
-                required
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="example@gmail.com"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold outline-none focus:ring-2 focus:ring-teal-600"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-            >
-              <span>👑</span>
-              <span>تحقق وتسجيل الدخول كمدير</span>
-            </button>
-          </form>
-        </div>
-
-        <div className="flex justify-end pt-2 border-t border-slate-100">
+        <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
           >
-            إلغاء
+            إغلاق
           </button>
         </div>
       </div>
