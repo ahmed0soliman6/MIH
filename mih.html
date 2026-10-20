@@ -392,15 +392,28 @@
           <p class="text-xs text-slate-500 font-semibold">تصفح وقراءة وطباعة السياسات أو تشغيلها في وضع العرض التقديمي</p>
         </div>
 
-        <!-- زر إضافة سياسة للمدير -->
-        <button
-          type="button"
-          id="policies-add-btn"
-          class="admin-only-control hidden px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-sm flex items-center gap-2 self-start sm:self-auto"
-        >
-          <span>➕</span>
-          <span>إضافة أو رفع سياسة جديدة</span>
-        </button>
+        <div class="flex items-center gap-2 self-start sm:self-auto">
+          <!-- زر مزامنة السياسات إلى Firestore -->
+          <button
+            type="button"
+            onclick="seedFirestorePolicies()"
+            class="admin-only-control hidden px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+            title="رفع ومزامنة كافة السياسات المعتمدة إلى قاعدة بيانات Firestore"
+          >
+            <span>🚀</span>
+            <span>مزامنة مع Firestore</span>
+          </button>
+
+          <!-- زر إضافة سياسة للمدير -->
+          <button
+            type="button"
+            id="policies-add-btn"
+            class="admin-only-control hidden px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-sm flex items-center gap-2 cursor-pointer"
+          >
+            <span>➕</span>
+            <span>إضافة أو رفع سياسة</span>
+          </button>
+        </div>
       </div>
 
       <!-- فلتر مصادر السياسات: الكل vs المجلد الشامل vs المعايير الوطنية -->
@@ -1127,6 +1140,25 @@
               <input type="text" id="settings-cloudinary-preset" placeholder="mih_preset" class="w-full px-3 py-2 rounded-xl border border-purple-300 font-mono text-xs outline-none focus:ring-2 focus:ring-purple-600" />
             </div>
           </div>
+        </div>
+
+        <!-- زر رفع ومزامنة السياسات إلى Cloud Firestore -->
+        <div class="p-4 rounded-2xl bg-amber-50/50 border border-amber-300 space-y-2">
+          <h4 class="font-extrabold text-amber-950 text-sm flex items-center gap-1.5">
+            <span>🚀</span>
+            <span>مزامنة السياسات مع Firebase Firestore</span>
+          </h4>
+          <p class="text-xs text-amber-900 leading-relaxed font-semibold">
+            إذا كانت قاعدة بيانات Firestore خالية (كما يظهر في لوحة تحكم Firebase)، اضغط على هذا الزر لرفع كافة السياسات المعتمدة (الـ 28 سياسة) دفعة واحدة إلى مجموعة policies في Firestore.
+          </p>
+          <button
+            type="button"
+            onclick="seedFirestorePolicies()"
+            class="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs transition flex items-center gap-2 shadow-sm cursor-pointer"
+          >
+            <span>☁️</span>
+            <span>رفع ومزامنة كافة السياسات المعتمدة إلى Firestore الآن</span>
+          </button>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Policy, CategoryKey } from '../types';
-import { CATEGORY_META } from '../data/initialData';
+import { CATEGORY_META, isManualPolicy } from '../data/initialData';
 
 interface PoliciesViewProps {
   policies: Policy[];
@@ -31,11 +31,11 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
 }) => {
   const [sourceFilter, setSourceFilter] = React.useState<'ALL' | 'MANUAL' | 'CORE'>('ALL');
 
-  const manualPoliciesCount = policies.filter((p) => p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد')).length;
-  const corePoliciesCount = policies.filter((p) => !p.dept?.includes('المجلد الشامل') && !p.notes?.includes('المجلد')).length;
+  const manualPoliciesCount = policies.filter(isManualPolicy).length;
+  const corePoliciesCount = policies.length - manualPoliciesCount;
 
   const filtered = policies.filter((p) => {
-    const isManual = p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد');
+    const isManual = isManualPolicy(p);
     if (sourceFilter === 'MANUAL' && !isManual) return false;
     if (sourceFilter === 'CORE' && isManual) return false;
 
@@ -175,7 +175,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
           {filtered.map((p) => {
             const meta = CATEGORY_META[p.category] || CATEGORY_META.QPI;
             const slidesCount = Array.isArray(p.slides) ? p.slides.length : 0;
-            const isManual = p.dept?.includes('المجلد الشامل') || p.notes?.includes('المجلد');
+            const isManual = isManualPolicy(p);
             return (
               <article
                 key={p.id}

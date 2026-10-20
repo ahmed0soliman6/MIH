@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Policy, Bundle, CategoryKey } from '../types';
-import { CATEGORY_META } from '../data/initialData';
+import { CATEGORY_META, isManualPolicy } from '../data/initialData';
 import { TabType } from './Navbar';
 
 interface HomeViewProps {
@@ -48,6 +48,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     });
   });
   const compliancePct = totalItems === 0 ? 100 : Math.round((checkedItems / totalItems) * 100);
+  const manualCount = policies.filter(isManualPolicy).length;
 
   const featuredPolicies = policies.slice(0, 3);
   const featuredBundles = bundles.slice(0, 3);
@@ -201,7 +202,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>📖</span>
-              <span>تصفح سياسات المجلد (12 سياسة)</span>
+              <span>تصفح سياسات المجلد ({manualCount} سياسة)</span>
               <span>←</span>
             </button>
             <button

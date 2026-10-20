@@ -351,3 +351,27 @@ export async function deleteAdminDocFromFirestore(db: Firestore | null, email: s
     console.warn(`Could not delete admin doc for ${email}:`, e);
   }
 }
+
+export async function seedFirestoreWithDefaults(
+  db: Firestore | null,
+  policies: Policy[],
+  authorEmail: string = 'admin@mih-quality.gov.eg'
+): Promise<{ success: boolean; count: number; error?: string }> {
+  if (!db) return { success: false, count: 0, error: 'قاعدة بيانات Firestore غير متصلة' };
+  try {
+    const colRef = collection(db, 'policies');
+    for (const p of policies) {
+      const docRef = doc(colRef, p.id);
+      await setDoc(docRef, {
+        ...p,
+        updated_at: new Date().toISOString(),
+        author_email: authorEmail
+      }, { merge: true });
+    }
+    return { success: true, count: policies.length };
+  } catch (err: any) {
+    console.error('Error seeding Firestore:', err);
+    return { success: false, count: 0, error: err.message || String(err) };
+  }
+}
+

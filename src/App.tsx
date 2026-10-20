@@ -21,7 +21,8 @@ import {
   loginWithGoogle,
   logoutUser,
   savePolicyToFirestore,
-  deletePolicyFromFirestore
+  deletePolicyFromFirestore,
+  seedFirestoreWithDefaults
 } from './services/firebase';
 import { Navbar, TabType } from './components/Navbar';
 import { HomeView } from './components/HomeView';
@@ -361,6 +362,23 @@ export const App: React.FC = () => {
     showToast('تم حذف السياسة بنجاح');
   };
 
+  // Seed all default policies to Firestore
+  const handleSeedFirestore = async () => {
+    if (!fbRef.current.db) {
+      showToast('يرجى التأكد من ربط وتوصيل Firebase في الإعدادات أولاً');
+      return;
+    }
+    setIsLoading(true);
+    setLoadingMessage('جاري رفع ومزامنة كافة السياسات المعتمدة إلى Cloud Firestore...');
+    const res = await seedFirestoreWithDefaults(fbRef.current.db, DEFAULT_POLICIES, currentUser?.email || 'admin@mih-quality.gov.eg');
+    setIsLoading(false);
+    if (res.success) {
+      showToast(`تم بنجاح رفع ومزامنة ${res.count} سياسة معتمدة إلى Cloud Firestore!`);
+    } else {
+      showToast(`حدث خطأ أثناء الرفع: ${res.error}`);
+    }
+  };
+
   // Policy Edit Trigger
   const handleStartEdit = (policy: Policy) => {
     if (!isAuthorizedAdmin) {
@@ -546,6 +564,7 @@ export const App: React.FC = () => {
             }}
             onShowToast={showToast}
             onUpdateSettings={handleSaveSettings}
+            onSeedFirestore={handleSeedFirestore}
           />
         )}
       </main>

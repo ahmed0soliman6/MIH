@@ -2,8 +2,8 @@ import { SystemSettings, Policy, Bundle } from '../types';
 import { DEFAULT_POLICIES, DEFAULT_BUNDLES, DEFAULT_ADMIN_EMAILS } from '../data/initialData';
 
 const SETTINGS_KEY = 'mih_system_settings_v3';
-const POLICIES_CACHE_KEY = 'mih_policies_cache_v2';
-const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v2';
+const POLICIES_CACHE_KEY = 'mih_policies_cache_v5';
+const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v5';
 
 export function getStoredSettings(): SystemSettings {
   const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY || '';
@@ -57,14 +57,16 @@ export function getCachedPolicies(): Policy[] {
     const raw = localStorage.getItem(POLICIES_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed) && parsed.length >= DEFAULT_POLICIES.length && parsed.some((p: any) => p.id === 'IC-01')) {
         return parsed;
       }
     }
   } catch (e) {
     console.warn('Failed to read cached policies:', e);
   }
-  return JSON.parse(JSON.stringify(DEFAULT_POLICIES));
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_POLICIES));
+  saveCachedPolicies(defaults);
+  return defaults;
 }
 
 export function saveCachedPolicies(policies: Policy[]): void {

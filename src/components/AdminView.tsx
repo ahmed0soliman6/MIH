@@ -21,6 +21,7 @@ interface AdminViewProps {
   onShowLoading: (loading: boolean, message?: string) => void;
   onShowToast: (message: string) => void;
   onUpdateSettings: (settings: SystemSettings) => void;
+  onSeedFirestore?: () => Promise<void>;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -33,6 +34,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onShowLoading,
   onShowToast,
   onUpdateSettings,
+  onSeedFirestore,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
 
@@ -383,7 +385,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onSeedFirestore && (
+            <button
+              type="button"
+              onClick={onSeedFirestore}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="رفع ومزامنة كافة السياسات المعتمدة إلى Firestore"
+            >
+              <span>🚀</span>
+              <span>مزامنة كافة السياسات إلى Firestore</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onExportJson}
