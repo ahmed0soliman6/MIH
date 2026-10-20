@@ -114,6 +114,8 @@ service cloud.firestore {
         request.auth.token.email != null &&
         (
           request.auth.token.email in [
+            'ahmed0soliman6@gmail.com',
+            'dina3ramadan@gmail.com',
             'admin@mih-quality.gov.eg',
             'quality.mih@gmail.com',
             'hospital.quality.mansoura@gmail.com'
@@ -234,14 +236,15 @@ service cloud.firestore {
     }
 
     // 3. Admins Whitelist Collection (قائمة مديري النظام)
-    // Restricted entirely to authenticated admins to prevent privilege escalation and PII leakage.
     match /admins/{adminEmail} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidAdmin(request.resource.data, adminEmail);
-      allow update: if isAdmin() &&
-                      isValidAdmin(request.resource.data, adminEmail) &&
-                      areImmutableFieldsUnchanged(['email', 'added_at', 'added_by']);
-      allow delete: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // 4. Settings Collection (including admin whitelist)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Default deny all other collections

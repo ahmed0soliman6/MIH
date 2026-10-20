@@ -14,6 +14,7 @@ import {
   subscribeToPolicies,
   subscribeToAuth,
   subscribeToWhitelist,
+  fetchWhitelistFromFirestore,
   saveWhitelistToFirestore,
   loginWithGoogle,
   logoutUser,
@@ -127,19 +128,39 @@ export const App: React.FC = () => {
       unsubscribeWhitelist = subscribeToWhitelist(db, (remoteEmails) => {
         if (remoteEmails && remoteEmails.length > 0) {
           setSettings((prev) => {
-            const updated = { ...prev, adminEmails: remoteEmails };
+            const combined = Array.from(new Set([...prev.adminEmails, ...remoteEmails]));
+            const updated = { ...prev, adminEmails: combined };
             saveStoredSettings(updated);
             return updated;
           });
         }
       });
 
-      unsubscribeAuth = subscribeToAuth(auth, (user) => {
+      unsubscribeAuth = subscribeToAuth(auth, async (user) => {
         setCurrentUser(user);
         if (user && user.email) {
-          const authorized = checkAdminWhitelist(user.email);
+          let authorized = checkAdminWhitelist(user.email);
+          if (!authorized && db) {
+            try {
+              const fresh = await fetchWhitelistFromFirestore(db);
+              if (fresh && fresh.some((e) => e.trim().toLowerCase() === user.email!.trim().toLowerCase())) {
+                authorized = true;
+                setSettings((prev) => {
+                  const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+                  const updated = { ...prev, adminEmails: combined };
+                  saveStoredSettings(updated);
+                  return updated;
+                });
+              }
+            } catch (e) {
+              console.warn('Auth check whitelist error:', e);
+            }
+          }
+
           setIsAuthorizedAdmin(authorized);
           if (authorized) {
+            localStorage.setItem('mih_admin_session', JSON.stringify(user));
+            setPermissionDeniedEmail(null);
             showToast(`مرحباً بك: ${user.displayName || user.email} (مدير جودة معتمد) 👑`);
           } else {
             setPermissionDeniedEmail(user.email);
@@ -156,6 +177,18 @@ export const App: React.FC = () => {
       unsubscribeWhitelist();
     };
   }, [settings.firebase]);
+
+  // Dynamically re-evaluate authorization if currentUser exists and whitelist changes
+  useEffect(() => {
+    if (currentUser && currentUser.email) {
+      const authorized = checkAdminWhitelist(currentUser.email);
+      if (authorized) {
+        setIsAuthorizedAdmin(true);
+        localStorage.setItem('mih_admin_session', JSON.stringify(currentUser));
+        setPermissionDeniedEmail(null);
+      }
+    }
+  }, [currentUser, settings.adminEmails]);
 
   // Restore saved session on mount
   useEffect(() => {
@@ -194,10 +227,30 @@ export const App: React.FC = () => {
     const user = await loginWithGoogle(fbRef.current.auth);
     if (user && user.email) {
       setCurrentUser(user);
-      const authorized = checkAdminWhitelist(user.email);
+      let authorized = checkAdminWhitelist(user.email);
+
+      // If not immediately authorized in memory, fetch fresh from Firestore
+      if (!authorized && fbRef.current.db) {
+        try {
+          const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
+          if (fresh && fresh.some((e) => e.trim().toLowerCase() === user.email!.trim().toLowerCase())) {
+            authorized = true;
+            setSettings((prev) => {
+              const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+              const updated = { ...prev, adminEmails: combined };
+              saveStoredSettings(updated);
+              return updated;
+            });
+          }
+        } catch (e) {
+          console.warn('Live fetch whitelist error:', e);
+        }
+      }
+
       setIsAuthorizedAdmin(authorized);
       if (authorized) {
         localStorage.setItem('mih_admin_session', JSON.stringify(user));
+        setPermissionDeniedEmail(null);
         showToast(`مرحباً بك: ${user.displayName || user.email} (مدير جودة معتمد) 👑`);
       } else {
         setPermissionDeniedEmail(user.email);
@@ -347,16 +400,16 @@ export const App: React.FC = () => {
   };
 
   // Save Settings & Whitelist
-  const handleSaveSettings = (newSettings: SystemSettings) => {
+  const handleSaveSettings = async (newSettings: SystemSettings) => {
     setSettings(newSettings);
     saveStoredSettings(newSettings);
 
     // Sync whitelist to Firestore if connected
     if (isFirebaseConnected && fbRef.current.db) {
-      saveWhitelistToFirestore(fbRef.current.db, newSettings.adminEmails);
+      await saveWhitelistToFirestore(fbRef.current.db, newSettings.adminEmails);
     }
 
-    showToast('تم حفظ الإعدادات وتحديث قائمة المديرين المعتمدين بنجاح');
+    showToast('تم حفظ وتحديث قائمة المديرين المعتمدين والمزامنة السحابية بنجاح 👑');
   };
 
   return (
@@ -495,6 +548,34 @@ export const App: React.FC = () => {
         isOpen={Boolean(permissionDeniedEmail)}
         userEmail={permissionDeniedEmail || ''}
         onClose={() => setPermissionDeniedEmail(null)}
+        onRecheck={async () => {
+          if (permissionDeniedEmail) {
+            let authorized = checkAdminWhitelist(permissionDeniedEmail);
+            if (!authorized && fbRef.current.db) {
+              try {
+                const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
+                if (fresh.some((e) => e.trim().toLowerCase() === permissionDeniedEmail.trim().toLowerCase())) {
+                  authorized = true;
+                  setSettings((prev) => {
+                    const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+                    const updated = { ...prev, adminEmails: combined };
+                    saveStoredSettings(updated);
+                    return updated;
+                  });
+                }
+              } catch (e) {
+                console.warn(e);
+              }
+            }
+            if (authorized) {
+              setIsAuthorizedAdmin(true);
+              setPermissionDeniedEmail(null);
+              showToast('تم التحقق بنجاح! مرحباً بك كمدير معتمد 👑');
+            } else {
+              showToast('لا يزال هذا البريد غير مسجل بالقائمة البيضاء للمديرين');
+            }
+          }
+        }}
       />
 
       <LoadingOverlay isLoading={isLoading} message={loadingMessage} />

@@ -41,6 +41,7 @@ export const CATEGORY_META: Record<CategoryKey, CategoryInfo> = {
 
 export const DEFAULT_ADMIN_EMAILS = [
   'ahmed0soliman6@gmail.com',
+  'dina3ramadan@gmail.com',
   'admin@mih-quality.gov.eg',
   'quality.mih@gmail.com',
   'hospital.quality.mansoura@gmail.com'

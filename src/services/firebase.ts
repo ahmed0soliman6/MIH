@@ -13,6 +13,8 @@ import {
   collection, 
   onSnapshot, 
   doc, 
+  getDoc,
+  getDocs,
   setDoc, 
   deleteDoc, 
   Firestore,
@@ -191,8 +193,8 @@ export function subscribeToWhitelist(
     return onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (Array.isArray(data.emails)) {
-          onData(data.emails);
+        if (Array.isArray(data.emails) && data.emails.length > 0) {
+          onData(data.emails.map((e: string) => e.trim().toLowerCase()));
         }
       }
     }, (err) => {
@@ -203,13 +205,66 @@ export function subscribeToWhitelist(
   }
 }
 
+export async function fetchWhitelistFromFirestore(db: Firestore | null): Promise<string[]> {
+  if (!db) return [];
+  const found = new Set<string>();
+  try {
+    // 1. Check settings/admin_whitelist
+    const docRef = doc(db, 'settings', 'admin_whitelist');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.emails)) {
+        data.emails.forEach((e: string) => {
+          if (typeof e === 'string' && e.trim()) {
+            found.add(e.trim().toLowerCase());
+          }
+        });
+      }
+    }
+
+    // 2. Also check admins collection
+    try {
+      const adminsColl = collection(db, 'admins');
+      const adminSnaps = await getDocs(adminsColl);
+      adminSnaps.forEach((d) => {
+        const data = d.data();
+        const em = data.email || d.id;
+        if (typeof em === 'string' && em.includes('@')) {
+          found.add(em.trim().toLowerCase());
+        }
+      });
+    } catch (e) {
+      // Ignored if permissions not active yet
+    }
+  } catch (err) {
+    console.warn('Error fetching whitelist directly from Firestore:', err);
+  }
+  return Array.from(found);
+}
+
 export async function saveWhitelistToFirestore(db: Firestore | null, emails: string[]): Promise<boolean> {
   if (!db) return false;
+  const cleanEmails = Array.from(new Set(emails.map((e) => e.trim().toLowerCase()))).filter(Boolean);
   try {
+    // Save to settings/admin_whitelist
     await setDoc(doc(db, 'settings', 'admin_whitelist'), {
-      emails,
+      emails: cleanEmails,
       updated_at: new Date().toISOString()
     }, { merge: true });
+
+    // Also populate individual admin records in /admins/{email}
+    for (const email of cleanEmails) {
+      try {
+        await setDoc(doc(db, 'admins', email), {
+          email: email,
+          role: 'admin',
+          added_at: new Date().toISOString()
+        }, { merge: true });
+      } catch (innerErr) {
+        console.warn(`Could not sync admin doc for ${email}:`, innerErr);
+      }
+    }
     return true;
   } catch (e) {
     console.warn('Failed to save whitelist to Firestore:', e);
