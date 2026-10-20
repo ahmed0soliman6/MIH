@@ -1,0 +1,252 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: policies
+// Document ID: auto-generated or slug (e.g. 'pol-123', 'ipc-01')
+// Fields:
+//   - title: string (required, 3..250 chars) - Official policy title (عنوان السياسة)
+//   - category: string (required, 2..100 chars) - Category key or department (تصنيف السياسة مثل IPC, QPS, IPSG)
+//   - code: string (required, 2..50 chars) - Policy reference code (كود السياسة مثل POL-IPC-01)
+//   - content_html: string (required, 1..500000 chars) - Rich-text HTML content of the policy
+//   - plain_text: string (required, 1..250000 chars) - Searchable plain text representation
+//   - slides: list (required, <= 100 items) - Presentation slide texts or URLs
+//   - updated_at: timestamp (required) - Timestamp of last modification
+//   - dept: string (optional, <= 100 chars) - Target hospital department
+//   - version: string (optional, <= 50 chars) - Version number (e.g. 'الإصدار 1.0')
+//   - date: string (optional, <= 50 chars) - Policy effective date string
+//   - purpose: string (optional, <= 5000 chars) - Stated purpose / goal
+//   - steps: list (optional, <= 100 items) - Executive procedure steps
+//   - summary: string (optional, <= 1000 chars) - Executive summary
+//   - created_at: timestamp (optional, immutable) - Initial creation timestamp
+//   - created_by: string (optional, immutable, <= 100 chars) - Admin email/UID who created doc
+//   - updated_by: string (optional, <= 100 chars) - Admin email/UID who updated doc
+//
+// Collection: bundles
+// Document ID: auto-generated or slug (e.g. 'bnd-vap', 'clabsi')
+// Fields:
+//   - title: string (required, 3..250 chars) - Bundle title (حزمة الرعاية)
+//   - code: string (required, 2..50 chars) - Bundle code (كود الحزمة)
+//   - updated_at: timestamp (required) - Timestamp of last modification
+//   - dept: string (optional, <= 100 chars) - Department (القسم)
+//   - goal: string (optional, <= 2000 chars) - Clinical objective (الهدف)
+//   - items: list (optional, <= 100 items) - Checklist items
+//   - created_at: timestamp (optional, immutable) - Initial creation timestamp
+//   - created_by: string (optional, immutable, <= 100 chars) - Creator email/UID
+//   - updated_by: string (optional, <= 100 chars) - Last modifier email/UID
+//
+// Collection: admins
+// Document ID: admin email address (e.g. 'admin@mih.gov.eg')
+// Fields:
+//   - email: string (required, valid email matching docId)
+//   - role: string (required, 'admin' | 'superadmin' | 'editor')
+//   - added_at: timestamp (required, immutable)
+//   - name: string (optional, <= 100 chars)
+//   - added_by: string (optional, immutable, <= 100 chars)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Validate list type and upper bound
+    function isValidList(listVal, maxSize) {
+      return listVal is list && listVal.size() <= maxSize;
+    }
+
+    // Validate string length bounds
+    function validStringLength(fieldVal, minLen, maxLen) {
+      return fieldVal is string &&
+        fieldVal.size() >= minLen &&
+        fieldVal.size() <= maxLen;
+    }
+
+    // Validate optional string field
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+        (data[field] is string &&
+         data[field].size() >= minLen &&
+         data[field].size() <= maxLen);
+    }
+
+    // Ensure document contains all required fields
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Ensure document contains only explicitly allowed schema fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Protect immutable fields against modification during update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Admin Authorization Logic
+    // ===============================================================
+    //
+    // Hardcoded initial bootstrap admin whitelist:
+    // Add your authorized hospital administrator Google / Firebase emails here.
+    function isBootstrapAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        (
+          request.auth.token.email in [
+            'admin@mih-quality.gov.eg',
+            'quality.mih@gmail.com',
+            'hospital.quality.mansoura@gmail.com'
+          ]
+        );
+    }
+
+    // Dynamic database admin lookup in the 'admins' collection:
+    // Enables adding/revoking admins dynamically via Firestore documents.
+    function isDbAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // Unified administrator check (supports both bootstrap whitelist and dynamic DB lookup)
+    function isAdmin() {
+      return isBootstrapAdmin() || isDbAdmin();
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Domain validator for 'policies' collection
+    function isValidPolicy(data) {
+      let allowedFields = [
+        'title', 'category', 'code', 'content_html', 'plain_text', 'slides', 'updated_at',
+        'dept', 'version', 'date', 'purpose', 'steps', 'summary', 'created_at', 'created_by', 'updated_by',
+        'images', 'author_email'
+      ];
+      let requiredFields = [
+        'title', 'category', 'code', 'content_html', 'plain_text', 'slides', 'updated_at'
+      ];
+
+      return hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        validStringLength(data.title, 3, 250) &&
+        validStringLength(data.category, 2, 100) &&
+        validStringLength(data.code, 2, 50) &&
+        validStringLength(data.content_html, 1, 500000) &&
+        validStringLength(data.plain_text, 1, 250000) &&
+        isValidList(data.slides, 100) &&
+        data.updated_at is timestamp &&
+        isValidOptionalString(data, 'dept', 0, 100) &&
+        isValidOptionalString(data, 'version', 0, 50) &&
+        isValidOptionalString(data, 'date', 0, 50) &&
+        isValidOptionalString(data, 'purpose', 0, 5000) &&
+        isValidOptionalString(data, 'summary', 0, 1000) &&
+        isValidOptionalString(data, 'created_by', 0, 100) &&
+        isValidOptionalString(data, 'updated_by', 0, 100) &&
+        isValidOptionalString(data, 'author_email', 0, 100) &&
+        (!('images' in data) || isValidList(data.images, 50)) &&
+        (!('steps' in data) || isValidList(data.steps, 100)) &&
+        (!('created_at' in data) || data.created_at is timestamp);
+    }
+
+    // Domain validator for 'bundles' collection
+    function isValidBundle(data) {
+      let allowedFields = [
+        'title', 'code', 'updated_at',
+        'dept', 'goal', 'items', 'created_at', 'created_by', 'updated_by'
+      ];
+      let requiredFields = ['title', 'code', 'updated_at'];
+
+      return hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        validStringLength(data.title, 3, 250) &&
+        validStringLength(data.code, 2, 50) &&
+        data.updated_at is timestamp &&
+        isValidOptionalString(data, 'dept', 0, 100) &&
+        isValidOptionalString(data, 'goal', 0, 2000) &&
+        isValidOptionalString(data, 'created_by', 0, 100) &&
+        isValidOptionalString(data, 'updated_by', 0, 100) &&
+        (!('items' in data) || isValidList(data.items, 100)) &&
+        (!('created_at' in data) || data.created_at is timestamp);
+    }
+
+    // Domain validator for 'admins' collection
+    function isValidAdmin(data, adminEmail) {
+      let allowedFields = ['email', 'role', 'added_at', 'name', 'added_by'];
+      let requiredFields = ['email', 'role', 'added_at'];
+
+      return hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        data.email == adminEmail &&
+        isValidEmail(data.email) &&
+        data.role in ['admin', 'superadmin', 'editor'] &&
+        data.added_at is timestamp &&
+        isValidOptionalString(data, 'name', 0, 100) &&
+        isValidOptionalString(data, 'added_by', 0, 100);
+    }
+
+    // ===============================================================
+    // Rules Definition
+    // ===============================================================
+
+    // 1. Policies Collection (مكتبة السياسات)
+    // Public read for medical/quality staff and visitors; admin-only writes with strict schema enforcement.
+    match /policies/{policyId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidPolicy(request.resource.data);
+      allow update: if isAdmin() &&
+                      isValidPolicy(request.resource.data) &&
+                      areImmutableFieldsUnchanged(['created_at', 'created_by']);
+      allow delete: if isAdmin();
+    }
+
+    // 2. Bundles Collection (حزم الرعاية الإكلينيكية)
+    // Public read for clinical checklists; admin-only writes with validation.
+    match /bundles/{bundleId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidBundle(request.resource.data);
+      allow update: if isAdmin() &&
+                      isValidBundle(request.resource.data) &&
+                      areImmutableFieldsUnchanged(['created_at', 'created_by']);
+      allow delete: if isAdmin();
+    }
+
+    // 3. Admins Whitelist Collection (قائمة مديري النظام)
+    // Restricted entirely to authenticated admins to prevent privilege escalation and PII leakage.
+    match /admins/{adminEmail} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidAdmin(request.resource.data, adminEmail);
+      allow update: if isAdmin() &&
+                      isValidAdmin(request.resource.data, adminEmail) &&
+                      areImmutableFieldsUnchanged(['email', 'added_at', 'added_by']);
+      allow delete: if isAdmin();
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
