@@ -1,0 +1,8 @@
+{
+  "name": "بوابة سياسات الجودة - مستشفى المنصورة الدولي | MIH Quality Portal",
+  "description": "نظام ويب لإدارة وعرض سياسات الجودة وحزم الرعاية الإكلينيكية بمستشفى المنصورة الدولي (MIH) مع عارض شرائح تفاعلي ومحرك تحويل ذكي",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

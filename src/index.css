@@ -1,9 +1,16 @@
-/* ==========================================================================
-   نظام سياسات الجودة - مستشفى المنصورة الدولي
-   Hospital Quality Policies System - Custom Styles
-   ========================================================================== */
+@import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+@theme {
+  --font-sans: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-mih-red: #991b1b;
+  --color-mih-red-dark: #7f1d1d;
+  --color-mih-red-light: #fef2f2;
+  --color-mih-teal: #0f766e;
+  --color-mih-teal-dark: #115e59;
+  --color-mih-teal-light: #f0fdfa;
+  --color-mih-sky: #e0f2fe;
+  --color-mih-gold: #b45309;
+}
 
 :root {
   --mih-red: #991b1b;
@@ -15,17 +22,13 @@
 }
 
 body {
-  font-family: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   background-color: #f8fafc;
   color: #0f172a;
   overflow-x: hidden;
 }
 
-/* التدرج اللوني للهيدر والبانر الرئيسي */
-.hero-gradient {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 118, 110, 0.88) 55%, rgba(153, 27, 27, 0.88) 100%);
-}
-
+/* Hero mesh gradient */
 .hero-mesh {
   background-color: #0f172a;
   background-image: radial-gradient(at 10% 20%, rgba(15, 118, 110, 0.35) 0px, transparent 50%),
@@ -33,7 +36,7 @@ body {
                     radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.9) 0px, transparent 50%);
 }
 
-/* شريط التمرير المخصص */
+/* Custom Scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -49,7 +52,7 @@ body {
   background: #94a3b8;
 }
 
-/* تنسيق محتوى الوثيقة الغني (HTML Policy Content) */
+/* Rich Document HTML Content Styling */
 .policy-content-html {
   line-height: 1.85;
   color: #1e293b;
@@ -91,14 +94,12 @@ body {
   list-style-type: disc;
   margin-right: 1.5rem;
   margin-bottom: 1rem;
-  space-y: 0.4rem;
 }
 
 .policy-content-html ol {
   list-style-type: decimal;
   margin-right: 1.5rem;
   margin-bottom: 1rem;
-  space-y: 0.4rem;
 }
 
 .policy-content-html li {
@@ -166,7 +167,7 @@ body {
   font-weight: 600;
 }
 
-/* أنماط عارض الشرائح التفاعلي (Presentation Mode) */
+/* Presentation Slide Animation */
 .slide-active {
   animation: slideFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -189,7 +190,7 @@ body {
   transform: translateX(-4px);
 }
 
-/* تنسيق الطباعة المعتمد للمستشفيات (Hospital Print Engine) */
+/* Hospital Print Engine */
 @media print {
   .no-print,
   #nav-header,
