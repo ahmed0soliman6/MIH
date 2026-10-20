@@ -60,23 +60,31 @@ export const AdminView: React.FC<AdminViewProps> = ({
   // Admin Whitelist management state
   const [newAdminEmail, setNewAdminEmail] = useState('');
 
-  const handleAddAdminEmail = (e: React.FormEvent) => {
+  const handleAddAdminEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = newAdminEmail.trim().toLowerCase();
+    let clean = newAdminEmail.trim().toLowerCase();
     if (!clean) return;
-    if (!clean.includes('@') || !clean.includes('.')) {
+
+    // If username entered without @, auto-append @gmail.com
+    if (!clean.includes('@')) {
+      clean = `${clean}@gmail.com`;
+    }
+
+    if (!clean.includes('.') || clean.length < 5) {
       onShowToast('يرجى إدخال بريد إلكتروني صالح');
       return;
     }
+
     const currentList = settings.adminEmails || [];
     if (currentList.some((em) => em.trim().toLowerCase() === clean)) {
       onShowToast('هذا البريد مسجل بالفعل في قائمة المديرين');
       return;
     }
+
     const updated = [...currentList, clean];
-    onUpdateSettings({ ...settings, adminEmails: updated });
     setNewAdminEmail('');
-    onShowToast(`تم اعتماد البريد (${clean})! يستطيع الآن الدخول فوراً عبر حساب Google كمدير معتمد 👑`);
+    await onUpdateSettings({ ...settings, adminEmails: updated });
+    onShowToast(`تم اعتماد البريد (${clean})! تم حفظه في فايرستور تلقائياً ويستطيع الدخول فوراً عبر Google 👑`);
   };
 
   const handleRemoveAdminEmail = (emailToRemove: string) => {
@@ -415,10 +423,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
         {/* Add Email Form */}
         <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2">
           <input
-            type="email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
             value={newAdminEmail}
             onChange={(e) => setNewAdminEmail(e.target.value)}
-            placeholder="أدخل البريد الإلكتروني الجديد للمدير (مثال: doctor@gmail.com)..."
+            placeholder="أدخل بريد المدير أو اسم المستخدم (مثال: doctor@gmail.com أو dina3)..."
             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
           />
           <button
@@ -426,9 +437,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
             className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
           >
             <span>➕</span>
-            <span>اعتماد مدير جديد</span>
+            <span>اعتماد مدير جديد وحفظه في فايرستور</span>
           </button>
         </form>
+        <p className="text-[11px] text-teal-700 dark:text-teal-400 font-medium flex items-center gap-1.5">
+          <span>⚡</span>
+          <span>يتم الحفظ تلقائياً في سحابة فايرستور (Firestore) ومزامنة الصلاحيات فوراً مع جميع الأجهزة والهواتف دون الحاجة لأي تعديل يدوي للقواعد.</span>
+        </p>
 
         {/* Whitelist Chips Grid */}
         <div className="space-y-2 pt-1">

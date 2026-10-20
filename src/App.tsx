@@ -15,7 +15,9 @@ import {
   subscribeToAuth,
   subscribeToWhitelist,
   fetchWhitelistFromFirestore,
+  isEmailAdminInFirestore,
   saveWhitelistToFirestore,
+  deleteAdminDocFromFirestore,
   loginWithGoogle,
   logoutUser,
   savePolicyToFirestore,
@@ -139,14 +141,25 @@ export const App: React.FC = () => {
       unsubscribeAuth = subscribeToAuth(auth, async (user) => {
         setCurrentUser(user);
         if (user && user.email) {
-          let authorized = checkAdminWhitelist(user.email);
-          if (!authorized && db) {
+          const cleanEmail = user.email.trim().toLowerCase();
+          let authorized = checkAdminWhitelist(cleanEmail);
+
+          if (db) {
             try {
-              const fresh = await fetchWhitelistFromFirestore(db);
-              if (fresh && fresh.some((e) => e.trim().toLowerCase() === user.email!.trim().toLowerCase())) {
+              // 1. Direct check in Firestore collections
+              const firestoreAdmin = await isEmailAdminInFirestore(db, cleanEmail);
+              if (firestoreAdmin) {
                 authorized = true;
+              }
+
+              // 2. Fresh fetch of all admin emails from Firestore
+              const fresh = await fetchWhitelistFromFirestore(db);
+              if (fresh && fresh.length > 0) {
+                if (fresh.some((e) => e.trim().toLowerCase() === cleanEmail)) {
+                  authorized = true;
+                }
                 setSettings((prev) => {
-                  const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+                  const combined = Array.from(new Set([...prev.adminEmails, ...fresh, ...(authorized ? [cleanEmail] : [])]));
                   const updated = { ...prev, adminEmails: combined };
                   saveStoredSettings(updated);
                   return updated;
@@ -190,6 +203,15 @@ export const App: React.FC = () => {
     }
   }, [currentUser, settings.adminEmails]);
 
+  // When an authorized admin is logged in, ensure Firestore has all currently approved emails
+  useEffect(() => {
+    if (isAuthorizedAdmin && isFirebaseConnected && fbRef.current.db && settings.adminEmails?.length > 0) {
+      saveWhitelistToFirestore(fbRef.current.db, settings.adminEmails).catch((e) => {
+        console.warn('Background sync whitelist error:', e);
+      });
+    }
+  }, [isAuthorizedAdmin, isFirebaseConnected]);
+
   // Restore saved session on mount
   useEffect(() => {
     try {
@@ -227,16 +249,24 @@ export const App: React.FC = () => {
     const user = await loginWithGoogle(fbRef.current.auth);
     if (user && user.email) {
       setCurrentUser(user);
-      let authorized = checkAdminWhitelist(user.email);
+      const cleanEmail = user.email.trim().toLowerCase();
+      let authorized = checkAdminWhitelist(cleanEmail);
 
-      // If not immediately authorized in memory, fetch fresh from Firestore
-      if (!authorized && fbRef.current.db) {
+      // Dynamically verify with live Firestore
+      if (fbRef.current.db) {
         try {
-          const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
-          if (fresh && fresh.some((e) => e.trim().toLowerCase() === user.email!.trim().toLowerCase())) {
+          const firestoreAdmin = await isEmailAdminInFirestore(fbRef.current.db, cleanEmail);
+          if (firestoreAdmin) {
             authorized = true;
+          }
+
+          const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
+          if (fresh && fresh.length > 0) {
+            if (fresh.some((e) => e.trim().toLowerCase() === cleanEmail)) {
+              authorized = true;
+            }
             setSettings((prev) => {
-              const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+              const combined = Array.from(new Set([...prev.adminEmails, ...fresh, ...(authorized ? [cleanEmail] : [])]));
               const updated = { ...prev, adminEmails: combined };
               saveStoredSettings(updated);
               return updated;
@@ -401,15 +431,25 @@ export const App: React.FC = () => {
 
   // Save Settings & Whitelist
   const handleSaveSettings = async (newSettings: SystemSettings) => {
+    const prevEmails = settings.adminEmails || [];
     setSettings(newSettings);
     saveStoredSettings(newSettings);
 
     // Sync whitelist to Firestore if connected
     if (isFirebaseConnected && fbRef.current.db) {
-      await saveWhitelistToFirestore(fbRef.current.db, newSettings.adminEmails);
+      const newEmails = newSettings.adminEmails || [];
+      const removed = prevEmails.filter((p) => !newEmails.includes(p));
+      for (const rem of removed) {
+        await deleteAdminDocFromFirestore(fbRef.current.db, rem);
+      }
+      const ok = await saveWhitelistToFirestore(fbRef.current.db, newEmails);
+      if (ok) {
+        showToast('تم حفظ وتحديث قائمة المديرين المعتمدين في فايرستور بنجاح 👑');
+        return;
+      }
     }
 
-    showToast('تم حفظ وتحديث قائمة المديرين المعتمدين والمزامنة السحابية بنجاح 👑');
+    showToast('تم حفظ وتحديث قائمة المديرين المعتمدين بنجاح 👑');
   };
 
   return (
@@ -550,29 +590,43 @@ export const App: React.FC = () => {
         onClose={() => setPermissionDeniedEmail(null)}
         onRecheck={async () => {
           if (permissionDeniedEmail) {
-            let authorized = checkAdminWhitelist(permissionDeniedEmail);
-            if (!authorized && fbRef.current.db) {
+            const cleanEmail = permissionDeniedEmail.trim().toLowerCase();
+            let authorized = checkAdminWhitelist(cleanEmail);
+            if (fbRef.current.db) {
               try {
-                const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
-                if (fresh.some((e) => e.trim().toLowerCase() === permissionDeniedEmail.trim().toLowerCase())) {
+                // 1. Direct check in Firestore collections
+                const firestoreAdmin = await isEmailAdminInFirestore(fbRef.current.db, cleanEmail);
+                if (firestoreAdmin) {
                   authorized = true;
+                }
+
+                // 2. Fresh fetch from Firestore
+                const fresh = await fetchWhitelistFromFirestore(fbRef.current.db);
+                if (fresh.some((e) => e.trim().toLowerCase() === cleanEmail)) {
+                  authorized = true;
+                }
+
+                if (authorized) {
                   setSettings((prev) => {
-                    const combined = Array.from(new Set([...prev.adminEmails, ...fresh]));
+                    const combined = Array.from(new Set([...prev.adminEmails, ...fresh, cleanEmail]));
                     const updated = { ...prev, adminEmails: combined };
                     saveStoredSettings(updated);
                     return updated;
                   });
                 }
               } catch (e) {
-                console.warn(e);
+                console.warn('Recheck error:', e);
               }
             }
             if (authorized) {
               setIsAuthorizedAdmin(true);
               setPermissionDeniedEmail(null);
-              showToast('تم التحقق بنجاح! مرحباً بك كمدير معتمد 👑');
+              if (currentUser) {
+                localStorage.setItem('mih_admin_session', JSON.stringify(currentUser));
+              }
+              showToast('تم التحقق بنجاح من فايرستور! مرحباً بك كمدير معتمد 👑');
             } else {
-              showToast('لا يزال هذا البريد غير مسجل بالقائمة البيضاء للمديرين');
+              showToast('لا يزال هذا البريد غير مسجل في فايرستور. اطلب من المدير اعتماده أولاً.');
             }
           }
         }}

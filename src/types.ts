@@ -27,6 +27,7 @@ export interface Policy {
   plain_text: string;
   slides: Slide[];
   images?: string[];
+  notes?: string;
   created_at?: string;
   updated_at?: string;
   author_email?: string;

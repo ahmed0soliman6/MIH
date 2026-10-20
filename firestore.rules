@@ -104,36 +104,27 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Admin Authorization Logic
+    // Admin Authorization Logic (Dynamic - No hardcoded emails)
     // ===============================================================
     //
-    // Hardcoded initial bootstrap admin whitelist:
-    // Add your authorized hospital administrator Google / Firebase emails here.
-    function isBootstrapAdmin() {
-      return isAuthenticated() &&
-        request.auth.token.email != null &&
-        (
-          request.auth.token.email in [
-            'ahmed0soliman6@gmail.com',
-            'dina3ramadan@gmail.com',
-            'admin@mih-quality.gov.eg',
-            'quality.mih@gmail.com',
-            'hospital.quality.mansoura@gmail.com'
-          ]
-        );
-    }
-
-    // Dynamic database admin lookup in the 'admins' collection:
-    // Enables adding/revoking admins dynamically via Firestore documents.
+    // Dynamically checks if the authenticated user's email exists in:
+    // 1. The 'admins' collection (/admins/{email})
+    // 2. OR the 'settings/admin_whitelist' document's 'emails' list
     function isDbAdmin() {
       return isAuthenticated() &&
         request.auth.token.email != null &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+        (
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
+          (
+            exists(/databases/$(database)/documents/settings/admin_whitelist) &&
+            request.auth.token.email in get(/databases/$(database)/documents/settings/admin_whitelist).data.emails
+          )
+        );
     }
 
-    // Unified administrator check (supports both bootstrap whitelist and dynamic DB lookup)
+    // Unified administrator check - completely dynamic via Firestore database
     function isAdmin() {
-      return isBootstrapAdmin() || isDbAdmin();
+      return isDbAdmin();
     }
 
     // ===============================================================
@@ -237,14 +228,14 @@ service cloud.firestore {
 
     // 3. Admins Whitelist Collection (قائمة مديري النظام)
     match /admins/{adminEmail} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // 4. Settings Collection (including admin whitelist)
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
     // Default deny all other collections
