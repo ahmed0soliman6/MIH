@@ -20,19 +20,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   onSelectCategory,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    IPC: true,
-    NSR: true,
-    FMS: true,
-    ER: true,
-    MMS: true,
-    QPI: true,
-    ICD: true,
-    PCC: true,
-    IMT: true,
-    ACT: true,
-    SAS: true,
-  });
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const toggleCategory = (catKey: string) => {
     setExpandedCategories((prev) => ({
@@ -149,51 +137,55 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           return (
             <div
               key={catKey}
-              className="rounded-2xl border border-slate-200 dark:border-slate-800/90 overflow-hidden bg-slate-50/50 dark:bg-slate-900/60"
+              className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900 shadow-xs hover:border-teal-400 dark:hover:border-teal-600 transition"
             >
-              {/* Category Header Accordion */}
-              <button
-                type="button"
-                onClick={() => toggleCategory(catKey)}
-                className="w-full p-3 flex items-center justify-between gap-2 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition cursor-pointer text-right"
+              {/* Category Header Card - Clicking anywhere on card navigates directly to the department page */}
+              <div
+                onClick={() => {
+                  if (onSelectCategory) {
+                    onSelectCategory(catKey);
+                  }
+                  onClose();
+                }}
+                className="w-full p-3.5 flex items-center justify-between gap-3 hover:bg-teal-50/70 dark:hover:bg-teal-950/40 transition cursor-pointer text-right group"
+                title={`فتح صفحة ${meta.name} واستعراض كافة سياساتها (${catPolicies.length})`}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xl flex-shrink-0">{meta.icon}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition shadow-2xs">
+                    {meta.icon}
+                  </div>
                   <div className="truncate">
-                    <span className="font-black text-xs sm:text-sm text-slate-900 dark:text-white block truncate">
+                    <span className="font-black text-xs sm:text-sm text-slate-900 dark:text-white block truncate group-hover:text-teal-700 dark:group-hover:text-teal-300 leading-tight">
                       {meta.name}
                     </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
-                      {catKey} • {catPolicies.length} سياسة
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold block mt-0.5">
+                      {catPolicies.length} {catKey} سياسة
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {onSelectCategory && (
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectCategory(catKey);
-                        onClose();
-                      }}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:hover:bg-teal-900 dark:text-teal-300 border border-teal-200 dark:border-teal-800 transition"
-                      title="فتح صفحة هذا القسم بالكامل"
-                    >
-                      صفحة القسم ↗
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border border-slate-200 dark:border-slate-700">
-                    {catPolicies.length}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 dark:bg-slate-800 group-hover:bg-teal-100 dark:group-hover:bg-teal-900/60 text-slate-700 dark:text-slate-300 group-hover:text-teal-800 dark:group-hover:text-teal-300 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition">
+                    <span>{catPolicies.length}</span>
+                    <span className="text-[10px] text-slate-400">◀</span>
                   </span>
-                  <span className="text-xs text-slate-400 transition-transform duration-200 inline-block">
-                    {isExpanded ? '▼' : '◀'}
-                  </span>
+                  
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCategory(catKey);
+                    }}
+                    className="w-6 h-6 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-xs text-slate-400 transition"
+                    title="عرض / إخفاء القائمة الفرعية"
+                  >
+                    {isExpanded ? '▲' : '▼'}
+                  </button>
                 </div>
-              </button>
+              </div>
 
-              {/* Policies in this category */}
-              {isExpanded && (
+              {/* Policies in this category if expanded or during search */}
+              {(isExpanded || (searchTerm && catPolicies.length > 0)) && (
                 <div className="border-t border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800/50">
                   {catPolicies.length === 0 ? (
                     <div className="p-3 text-center text-xs text-slate-400 italic">

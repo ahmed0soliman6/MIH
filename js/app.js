@@ -5489,6 +5489,16 @@ function filterByDepartmentFromSidebar(catKey) {
   }
   toggleDepartmentSidebar(false);
   window.location.hash = '#/category/' + catKey;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  return;
+  switchTab('policies');
+  const catFilter = document.getElementById('policy-category-filter');
+  if (catFilter) {
+    catFilter.value = catKey;
+    renderPoliciesGrid();
+  }
+  toggleDepartmentSidebar(false);
+  window.location.hash = '#/category/' + catKey;
 }
 
 function syncFromHash() {
@@ -5776,7 +5786,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 let isDepartmentSidebarOpen = false;
 let currentSidebarSearch = '';
-const expandedSidebarCategories = new Set(['IPC', 'NSR', 'SAS', 'ER', 'ICD', 'ACT', 'MMS', 'PCC', 'IMT', 'FMS', 'QPI']);
+const expandedSidebarCategories = new Set();
 
 const DEPARTMENT_GROUPS = [
   { key: 'IPC', name: 'مكافحة العدوى والتعقيم (IPC)', icon: '🛡️', color: 'teal', desc: 'سياسات وإجراءات منع ومكافحة العدوى' },
@@ -5862,26 +5872,37 @@ function renderDepartmentSidebar(search = '') {
     const isExpanded = search ? true : expandedSidebarCategories.has(dept.key);
 
     html += `
-      <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-        <!-- رأس القسم -->
-        <button
-          type="button"
-          onclick="toggleSidebarCategoryAccordion('${dept.key}')"
-          class="w-full p-3 bg-slate-50 hover:bg-slate-100 flex items-center justify-between transition text-right cursor-pointer"
+            <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-teal-400 hover:shadow-md transition">
+        <!-- كارت القسم بالكامل قابل للنقر لفتح صفحة القسم مباشرة -->
+        <div
+          onclick="filterByDepartmentFromSidebar('${dept.key}')"
+          class="w-full p-3.5 bg-white hover:bg-teal-50/70 flex items-center justify-between transition text-right cursor-pointer group"
+          title="فتح صفحة ${dept.name} وعرض كافة سياساتها (${deptPolicies.length})"
         >
-          <div class="flex items-center gap-2">
-            <span class="text-base">${dept.icon}</span>
-            <div>
-              <div class="font-extrabold text-slate-900 text-xs">${dept.name}</div>
-              <div class="text-[10px] text-slate-500 font-semibold">${dept.desc}</div>
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition shadow-2xs">
+              ${dept.icon}
+            </div>
+            <div class="truncate">
+              <div class="font-extrabold text-slate-900 text-xs sm:text-sm group-hover:text-teal-700 leading-tight">${dept.name}</div>
+              <div class="text-[11px] text-slate-500 font-semibold mt-0.5">${deptPolicies.length} ${dept.key} سياسة</div>
             </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <span onclick="event.stopPropagation(); filterByDepartmentFromSidebar('${dept.key}')" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 hover:bg-teal-100 transition cursor-pointer" title="فتح صفحة هذا القسم">صفحة القسم ↗</span>
-            <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">${deptPolicies.length}</span>
-            <span class="text-xs text-slate-400 font-bold transition transform ${isExpanded ? 'rotate-180' : ''}">▼</span>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 group-hover:bg-teal-100 text-slate-700 group-hover:text-teal-800 border border-slate-200 flex items-center gap-1.5 transition">
+              <span>${deptPolicies.length}</span>
+              <span class="text-[10px] text-slate-400">◀</span>
+            </span>
+            <button
+              type="button"
+              onclick="event.stopPropagation(); toggleSidebarCategoryAccordion('${dept.key}')"
+              class="w-6 h-6 rounded-md hover:bg-slate-200 flex items-center justify-center text-xs text-slate-400 transition cursor-pointer"
+              title="عرض / إخفاء القائمة الفرعية"
+            >
+              ${isExpanded ? '▲' : '▼'}
+            </button>
           </div>
-        </button>
+        </div>
 
         <!-- قائمة سياسات القسم -->
         <div class="${isExpanded ? 'block' : 'hidden'} divide-y divide-slate-100 bg-white">
