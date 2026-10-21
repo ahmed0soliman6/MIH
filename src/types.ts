@@ -1,4 +1,4 @@
-export type CategoryKey = 'NSR' | 'IPC' | 'MMS' | 'QPI' | 'FMS' | 'ER';
+export type CategoryKey = 'NSR' | 'IPC' | 'MMS' | 'QPI' | 'FMS' | 'ER' | 'ICD';
 
 export interface CategoryInfo {
   name: string;

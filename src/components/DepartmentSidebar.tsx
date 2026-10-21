@@ -25,6 +25,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     ER: true,
     MMS: true,
     QPI: true,
+    ICD: true,
   });
 
   const toggleCategory = (catKey: string) => {
@@ -43,6 +44,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
       ER: [],
       MMS: [],
       QPI: [],
+      ICD: [],
     };
 
     const cleanSearch = searchTerm.trim().toLowerCase();
@@ -65,7 +67,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     return groups;
   }, [policies, searchTerm]);
 
-  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'FMS', 'ER', 'MMS', 'QPI'];
+  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'FMS', 'ER', 'ICD', 'MMS', 'QPI'];
 
   if (!isOpen) return null;
 
