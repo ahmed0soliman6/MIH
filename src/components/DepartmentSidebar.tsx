@@ -8,6 +8,7 @@ interface DepartmentSidebarProps {
   policies: Policy[];
   onSelectPolicy: (policy: Policy) => void;
   onLaunchPresentation?: (policy: Policy) => void;
+  onSelectCategory?: (category: string) => void;
 }
 
 export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
@@ -16,6 +17,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   policies,
   onSelectPolicy,
   onLaunchPresentation,
+  onSelectCategory,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
@@ -26,6 +28,8 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     MMS: true,
     QPI: true,
     ICD: true,
+    PCC: true,
+    IMT: true,
   });
 
   const toggleCategory = (catKey: string) => {
@@ -45,6 +49,8 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
       MMS: [],
       QPI: [],
       ICD: [],
+      PCC: [],
+      IMT: [],
     };
 
     const cleanSearch = searchTerm.trim().toLowerCase();
@@ -67,7 +73,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     return groups;
   }, [policies, searchTerm]);
 
-  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'FMS', 'ER', 'ICD', 'MMS', 'QPI'];
+  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'FMS', 'ER', 'ICD', 'PCC', 'IMT', 'MMS', 'QPI'];
 
   if (!isOpen) return null;
 
@@ -160,6 +166,19 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {onSelectCategory && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectCategory(catKey);
+                        onClose();
+                      }}
+                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:hover:bg-teal-900 dark:text-teal-300 border border-teal-200 dark:border-teal-800 transition"
+                      title="فتح صفحة هذا القسم بالكامل"
+                    >
+                      صفحة القسم ↗
+                    </span>
+                  )}
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border border-slate-200 dark:border-slate-700">
                     {catPolicies.length}
                   </span>

@@ -246,11 +246,105 @@ export const App: React.FC = () => {
     }
   }, [settings.adminEmails]);
 
-  // Tab switch handler with scroll to top
+  // Update URL Hash without reload
+  const updateHash = (newHash: string) => {
+    if (window.location.hash !== newHash) {
+      window.history.pushState(null, '', newHash);
+    }
+  };
+
+  // Open & Close Document Handlers
+  const handleOpenDocument = (p: Policy) => {
+    setActiveDocPolicy(p);
+    setActivePresPolicy(null);
+    updateHash(`#/policy/${p.id}`);
+  };
+
+  const handleCloseDocument = () => {
+    setActiveDocPolicy(null);
+    updateHash(currentTab === 'home' ? '#/' : `#/${currentTab}`);
+  };
+
+  // Open & Close Presentation Handlers
+  const handleOpenPresentation = (p: Policy) => {
+    setActivePresPolicy(p);
+    setActiveDocPolicy(null);
+    updateHash(`#/present/${p.id}`);
+  };
+
+  const handleClosePresentation = () => {
+    setActivePresPolicy(null);
+    updateHash(currentTab === 'home' ? '#/' : `#/${currentTab}`);
+  };
+
+  // Tab switch handler with scroll to top & hash update
   const handleTabChange = (tab: TabType) => {
     setCurrentTab(tab);
+    setActiveDocPolicy(null);
+    setActivePresPolicy(null);
+    updateHash(tab === 'home' ? '#/' : `#/${tab}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Department / Category filter handler with hash update
+  const handleSelectCategory = (cat: string) => {
+    setSelectedCategory(cat);
+    setSearchQuery('');
+    setCurrentTab('policies');
+    setActiveDocPolicy(null);
+    setActivePresPolicy(null);
+    updateHash(`#/category/${cat}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Synchronize state with URL Hash for seamless reload (F5) & direct link sharing
+  useEffect(() => {
+    const syncFromHash = () => {
+      const hash = window.location.hash || '';
+      if (!hash || hash === '#' || hash === '#/') return;
+
+      const clean = hash.replace(/^#\/?/, '');
+      const parts = clean.split('/');
+      const route = parts[0];
+      const param = decodeURIComponent(parts.slice(1).join('/'));
+
+      if (route === 'policy' && param) {
+        const found = policies.find((p) => p.id === param || p.code === param || p.code?.replace(/\//g, '_') === param);
+        if (found) {
+          setActiveDocPolicy(found);
+          setActivePresPolicy(null);
+        }
+      } else if (route === 'present' && param) {
+        const found = policies.find((p) => p.id === param || p.code === param || p.code?.replace(/\//g, '_') === param);
+        if (found) {
+          setActivePresPolicy(found);
+          setActiveDocPolicy(null);
+        }
+      } else if (route === 'category' || route === 'department') {
+        if (param) {
+          setSelectedCategory(param);
+          setCurrentTab('policies');
+          setActiveDocPolicy(null);
+          setActivePresPolicy(null);
+        }
+      } else if (['home', 'policies', 'bundles', 'architecture', 'admin'].includes(route)) {
+        setCurrentTab(route as TabType);
+        if (route === 'policies' && param) {
+          setSelectedCategory(param);
+        }
+        setActiveDocPolicy(null);
+        setActivePresPolicy(null);
+      }
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    window.addEventListener('popstate', syncFromHash);
+    return () => {
+      window.removeEventListener('hashchange', syncFromHash);
+      window.removeEventListener('popstate', syncFromHash);
+    };
+  }, [policies]);
 
   // Login triggers
   const handleOpenLogin = () => {
@@ -540,7 +634,7 @@ export const App: React.FC = () => {
         currentUser={currentUser}
         isFirebaseConnected={isFirebaseConnected}
         activeReadingPolicy={activeDocPolicy}
-        onBackFromReading={() => setActiveDocPolicy(null)}
+        onBackFromReading={handleCloseDocument}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
@@ -552,16 +646,13 @@ export const App: React.FC = () => {
             bundles={bundles}
             isAuthorizedAdmin={isAuthorizedAdmin}
             onNavigateTab={handleTabChange}
-            onFilterCategory={(cat) => {
-              setSelectedCategory(cat);
-              setSearchQuery('');
-            }}
+            onFilterCategory={handleSelectCategory}
             onSearchQuery={(q) => {
               setSearchQuery(q);
               setSelectedCategory('ALL');
             }}
-            onOpenDocument={(p) => setActiveDocPolicy(p)}
-            onOpenPresentation={(p) => setActivePresPolicy(p)}
+            onOpenDocument={handleOpenDocument}
+            onOpenPresentation={handleOpenPresentation}
             onQuickAddPolicy={() => {
               setEditingPolicy(null);
               handleTabChange('admin');
@@ -576,9 +667,9 @@ export const App: React.FC = () => {
             selectedCategory={selectedCategory}
             isAuthorizedAdmin={isAuthorizedAdmin}
             onSearchChange={setSearchQuery}
-            onCategoryChange={setSelectedCategory}
-            onOpenDocument={(p) => setActiveDocPolicy(p)}
-            onOpenPresentation={(p) => setActivePresPolicy(p)}
+            onCategoryChange={handleSelectCategory}
+            onOpenDocument={handleOpenDocument}
+            onOpenPresentation={handleOpenPresentation}
             onEditPolicy={handleStartEdit}
             onDeletePolicy={handleDeletePolicy}
             onAddPolicy={() => {
@@ -635,12 +726,9 @@ export const App: React.FC = () => {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         policies={policies}
-        onSelectPolicy={(p) => {
-          setActiveDocPolicy(p);
-        }}
-        onLaunchPresentation={(p) => {
-          setActivePresPolicy(p);
-        }}
+        onSelectPolicy={handleOpenDocument}
+        onLaunchPresentation={handleOpenPresentation}
+        onSelectCategory={handleSelectCategory}
       />
 
       {/* Footer */}
@@ -651,15 +739,15 @@ export const App: React.FC = () => {
         policy={activeDocPolicy}
         isOpen={Boolean(activeDocPolicy)}
         isAuthorizedAdmin={isAuthorizedAdmin}
-        onClose={() => setActiveDocPolicy(null)}
-        onLaunchPresentation={(p) => setActivePresPolicy(p)}
+        onClose={handleCloseDocument}
+        onLaunchPresentation={handleOpenPresentation}
         onEditPolicy={handleStartEdit}
       />
 
       <PresentationModal
         policy={activePresPolicy}
         isOpen={Boolean(activePresPolicy)}
-        onClose={() => setActivePresPolicy(null)}
+        onClose={handleClosePresentation}
       />
 
       <SettingsModal

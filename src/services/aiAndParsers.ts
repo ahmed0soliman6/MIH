@@ -443,7 +443,7 @@ export async function processPdfWithGemini(
 {
   "title": "عنوان السياسة الواضح والرسمي",
   "code": "كود السياسة مثل MIH-IPC-001 أو IPC-001",
-  "category": "رمز القسم من هذه القائمة فقط: (NSR, IPC, MMS, QPI, FMS, ER, ICD)",
+  "category": "رمز القسم من هذه القائمة فقط: (NSR, IPC, MMS, QPI, FMS, ER, ICD, PCC, IMT)",
   "dept": "الأقسام المعنية بالمستشفى",
   "version": "رقم الإصدار وتاريخه",
   "purpose": "الهدف الرئيسي من السياسة في فقرة موجزة",
@@ -503,7 +503,7 @@ export async function processPdfWithGemini(
           if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
 
           const parsed = JSON.parse(cleanJson.trim());
-          const validCategories: CategoryKey[] = ['NSR', 'IPC', 'MMS', 'QPI', 'FMS', 'ER', 'ICD'];
+          const validCategories: CategoryKey[] = ['NSR', 'IPC', 'MMS', 'QPI', 'FMS', 'ER', 'ICD', 'PCC', 'IMT'];
           const category: CategoryKey = validCategories.includes(parsed.category) ? parsed.category : 'QPI';
 
           return {
