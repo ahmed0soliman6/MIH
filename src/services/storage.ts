@@ -2,8 +2,8 @@ import { SystemSettings, Policy, Bundle } from '../types';
 import { DEFAULT_POLICIES, DEFAULT_BUNDLES, DEFAULT_ADMIN_EMAILS } from '../data/initialData';
 
 const SETTINGS_KEY = 'mih_system_settings_v3';
-const POLICIES_CACHE_KEY = 'mih_policies_cache_v8';
-const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v8';
+const POLICIES_CACHE_KEY = 'mih_policies_cache_v9';
+const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v9';
 
 export function getStoredSettings(): SystemSettings {
   const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY || '';
