@@ -2,8 +2,8 @@ import { SystemSettings, Policy, Bundle } from '../types';
 import { DEFAULT_POLICIES, DEFAULT_BUNDLES, DEFAULT_ADMIN_EMAILS } from '../data/initialData';
 
 const SETTINGS_KEY = 'mih_system_settings_v3';
-const POLICIES_CACHE_KEY = 'mih_policies_cache_v5';
-const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v5';
+const POLICIES_CACHE_KEY = 'mih_policies_cache_v6';
+const BUNDLES_CACHE_KEY = 'mih_bundles_cache_v6';
 
 export function getStoredSettings(): SystemSettings {
   const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY || '';
@@ -53,20 +53,32 @@ export function saveStoredSettings(settings: SystemSettings): void {
 }
 
 export function getCachedPolicies(): Policy[] {
+  let list: Policy[] = [];
   try {
     const raw = localStorage.getItem(POLICIES_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length >= DEFAULT_POLICIES.length && parsed.some((p: any) => p.id === 'IC-01')) {
-        return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        list = parsed;
       }
     }
   } catch (e) {
     console.warn('Failed to read cached policies:', e);
   }
-  const defaults = JSON.parse(JSON.stringify(DEFAULT_POLICIES));
-  saveCachedPolicies(defaults);
-  return defaults;
+
+  // Ensure all official DEFAULT_POLICIES are present
+  let hasMissing = false;
+  DEFAULT_POLICIES.forEach((defP) => {
+    if (!list.some((p) => p.id === defP.id || p.code === defP.code)) {
+      list.push(defP);
+      hasMissing = true;
+    }
+  });
+
+  if (hasMissing || list.length === 0) {
+    saveCachedPolicies(list);
+  }
+  return list;
 }
 
 export function saveCachedPolicies(policies: Policy[]): void {

@@ -3,7 +3,9 @@ import { Policy, Slide, CategoryKey, SystemSettings } from '../types';
 import { CATEGORY_META } from '../data/initialData';
 import {
   parseWordDocument,
+  parsePptxDocument,
   inspectPdfDocument,
+  extractPdfTextLocally,
   processPdfWithGemini,
   uploadToCloudinary,
   getArabicCurrentMonthYear,
@@ -58,6 +60,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [images, setImages] = useState<string[]>([]);
 
   // PDF Page Range Selector state
+  const [rawPdfFile, setRawPdfFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<{
     name: string;
     totalPages: number;
@@ -162,15 +165,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setSlides([]);
     setImages([]);
     setPdfFile(null);
+    setRawPdfFile(null);
     setSelectedPolicyId('new');
   };
 
-  // Word File Handler
+  // Word File Handler (.docx / .doc)
   const handleWordUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    onShowLoading(true, 'جاري قراءة واستخراج نصوص وجداول ملف Word عبر mammoth...');
+    onShowLoading(true, 'جاري قراءة واستخراج نصوص وجداول ملف Word محلياً في المتصفح...');
     try {
       const parsed = await parseWordDocument(file);
       setTitle(parsed.title);
@@ -184,12 +188,41 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setSlides(parsed.slides);
 
       onShowLoading(false);
-      onShowToast('تم استخراج محتوى ملف Word وبناء الشرائح بنجاح!');
+      onShowToast(`🎉 تم بنجاح استخراج محتوى ملف Word وبناء (${parsed.slides.length}) شريحة!`);
       setEditorTab('preview-doc');
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
       alert('حدث خطأ أثناء قراءة ملف Word: ' + (err.message || err));
+    }
+    e.target.value = '';
+  };
+
+  // PowerPoint File Handler (.pptx / .ppt)
+  const handlePptxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    onShowLoading(true, 'جاري قراءة واستخراج شرائح ملف PowerPoint (.pptx) محلياً في المتصفح...');
+    try {
+      const parsed = await parsePptxDocument(file);
+      setTitle(parsed.title);
+      setCode(parsed.code);
+      setCategory(parsed.category);
+      setDept(parsed.dept);
+      setVersion(parsed.version);
+      setDate(parsed.date);
+      setPurpose(parsed.purpose);
+      setContentHtml(parsed.content_html);
+      setSlides(parsed.slides);
+
+      onShowLoading(false);
+      onShowToast(`🎉 تم بنجاح استخراج (${parsed.slides.length}) شريحة من ملف PowerPoint وبناء العرض التقديمي!`);
+      setEditorTab('preview-slides');
+    } catch (err: any) {
+      onShowLoading(false);
+      console.error(err);
+      alert('حدث خطأ أثناء قراءة ملف PowerPoint: ' + (err.message || err));
     }
     e.target.value = '';
   };
@@ -201,6 +234,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
     onShowLoading(true, 'جاري فحص وتجهيز صفحات ملف الـ PDF...');
     try {
+      setRawPdfFile(file);
       const { pdfDoc, totalPages } = await inspectPdfDocument(file);
       setPdfFile({
         name: file.name,
@@ -211,7 +245,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setPdfEndPage(Math.min(5, totalPages));
 
       onShowLoading(false);
-      onShowToast(`تم تحميل ملف PDF (${totalPages} صفحة). حدد نطاق الصفحات للاستخراج.`);
+      onShowToast(`تم تحميل ملف PDF (${totalPages} صفحة). يمكنك الآن الاختيار بين الاستخراج المحلي الفوري أو التحليل بـ Gemini.`);
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
@@ -220,7 +254,34 @@ export const AdminView: React.FC<AdminViewProps> = ({
     e.target.value = '';
   };
 
-  // Process PDF with Gemini
+  // Extract PDF text locally (No API key required!)
+  const handleExtractPdfLocally = async () => {
+    if (!rawPdfFile) return;
+
+    onShowLoading(true, `جاري استخراج النصوص محلياً من الصفحات (${pdfStartPage}) إلى (${pdfEndPage}) في المتصفح...`);
+    try {
+      const parsed = await extractPdfTextLocally(rawPdfFile, pdfStartPage, pdfEndPage);
+      setTitle(parsed.title);
+      setCode(parsed.code);
+      setCategory(parsed.category);
+      setDept(parsed.dept);
+      setVersion(parsed.version);
+      setDate(parsed.date);
+      setPurpose(parsed.purpose);
+      setContentHtml(parsed.content_html);
+      setSlides(parsed.slides);
+
+      onShowLoading(false);
+      onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API!`);
+      setEditorTab('preview-doc');
+    } catch (err: any) {
+      onShowLoading(false);
+      console.error(err);
+      alert('حدث خطأ أثناء الاستخراج المحلي: ' + (err.message || err));
+    }
+  };
+
+  // Process PDF with Gemini AI
   const handleProcessPdfWithGemini = async () => {
     if (!pdfFile) return;
 
@@ -232,7 +293,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onUpdateSettings({ ...settings, geminiKey: apiKey });
     }
 
-    onShowLoading(true, `جاري استخراج الصفحات من (${pdfStartPage}) إلى (${pdfEndPage}) وتحليلها بأحدث نموذج ذكاء اصطناعي (Gemini 3.8 Flash) فائق السرعة والدقة...`);
+    onShowLoading(true, `جاري استخراج الصفحات من (${pdfStartPage}) إلى (${pdfEndPage}) وتحليلها بنموذج Gemini Flash AI فائق السرعة والدقة...`);
     try {
       const res = await processPdfWithGemini(pdfFile.doc, pdfStartPage, pdfEndPage, apiKey);
       setTitle(res.title);
@@ -246,7 +307,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setSlides(res.slides && res.slides.length > 0 ? res.slides : generateSlidesFromHtml(res.content_html, res.title));
 
       onShowLoading(false);
-      onShowToast('تم استخراج السياسة وبناء الشرائح بواسطة الذكاء الاصطناعي بنجاح!');
+      onShowToast('🎉 تم استخراج السياسة وبناء الشرائح بواسطة الذكاء الاصطناعي بنجاح!');
       setEditorTab('preview-doc');
     } catch (err: any) {
       onShowLoading(false);
@@ -538,31 +599,48 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* 1. Word Upload */}
           <div className="p-5 rounded-2xl bg-teal-50/50 border border-teal-200 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📄</span>
               <h4 className="font-extrabold text-teal-950 text-sm">ملفات Word (.docx)</h4>
               <p className="text-xs text-teal-800 leading-relaxed font-semibold">
-                استخراج فوري في المتصفح عبر <code>mammoth.js</code> للجداول والفقرات وبناء الشرائح تلقائياً.
+                استخراج فوري في المتصفح للجداول والفقرات وبناء الشرائح تلقائياً.
               </p>
             </div>
             <div>
               <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-sm">
-                <span>اختيار ملف .docx</span>
-                <input type="file" accept=".docx" onChange={handleWordUpload} className="hidden" />
+                <span>اختيار ملف Word</span>
+                <input type="file" accept=".docx,.doc" onChange={handleWordUpload} className="hidden" />
               </label>
             </div>
           </div>
 
-          {/* 2. PDF Upload */}
+          {/* 2. PowerPoint Upload */}
+          <div className="p-5 rounded-2xl bg-indigo-50/50 border border-indigo-200 text-center space-y-3 flex flex-col justify-between">
+            <div className="space-y-2">
+              <span className="text-3xl">📽️</span>
+              <h4 className="font-extrabold text-indigo-950 text-sm">عروض PowerPoint (.pptx)</h4>
+              <p className="text-xs text-indigo-800 leading-relaxed font-semibold">
+                قراءة واستخراج كافة الشرائح والنقاط والعناوين محلياً في ثوانٍ.
+              </p>
+            </div>
+            <div>
+              <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs transition shadow-sm">
+                <span>اختيار ملف .pptx</span>
+                <input type="file" accept=".pptx,.ppt" onChange={handlePptxUpload} className="hidden" />
+              </label>
+            </div>
+          </div>
+
+          {/* 3. PDF Upload */}
           <div className="p-5 rounded-2xl bg-red-50/50 border border-red-200 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📑</span>
-              <h4 className="font-extrabold text-red-950 text-sm">ملفات PDF (Gemini AI)</h4>
+              <h4 className="font-extrabold text-red-950 text-sm">ملفات PDF (محلي + AI)</h4>
               <p className="text-xs text-red-800 leading-relaxed font-semibold">
-                معالجة ذكية دقيقة باللغة العربية عبر نموذج <code>gemini-2.5-flash</code> مع ميزة تحديد نطاق الصفحات.
+                استخراج محلي فوري أو معالجة ذكية بـ Gemini مع تحديد نطاق الصفحات.
               </p>
             </div>
             <div>
@@ -573,13 +651,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
-          {/* 3. Cloudinary Upload */}
+          {/* 4. Cloudinary Upload */}
           <div className="p-5 rounded-2xl bg-purple-50/50 border border-purple-200 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">🖼️</span>
               <h4 className="font-extrabold text-purple-950 text-sm">صور ومخططات (Cloudinary)</h4>
               <p className="text-xs text-purple-800 leading-relaxed font-semibold">
-                رفع فوري بدون خادم مع ضغط Canvas WebP وإدراج الرابط مباشرة في نصوص وشرائح السياسة.
+                رفع فوري بدون خادم مع ضغط Canvas WebP وإدراج الرابط مباشرة بالسياسة.
               </p>
             </div>
             <div>
@@ -590,13 +668,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
-          {/* 4. Direct JSON Batch Importer */}
+          {/* 5. Direct JSON Batch Importer */}
           <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📥</span>
               <h4 className="font-extrabold text-amber-950 dark:text-amber-200 text-sm">استيراد كود JSON ودفعات</h4>
               <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed font-semibold">
-                الصق كود الـ JSON أو ارفع ملف دفعات ليظهر فوراً في الموقع ويتحفظ بالسحابة تلقائياً.
+                الصق كود الـ JSON أو ارفع ملف دفعات ليظهر فوراً ويتحفظ بالسحابة.
               </p>
             </div>
             <div>
@@ -611,7 +689,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
         </div>
 
-        {/* PDF Page Selector Box */}
+        {/* PDF Page Selector Box with Local and Gemini options */}
         {pdfFile && (
           <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -626,9 +704,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   إجمالي صفحات الملف: <strong className="text-white">{pdfFile.totalPages}</strong> صفحة
                 </p>
               </div>
-              <span className="text-xs bg-teal-900/60 text-teal-300 px-3 py-1 rounded-full border border-teal-700">
-                Gemini 3.8 Flash (Latest AI Engine)
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] bg-emerald-950 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-700">
+                  استخراج محلي متاح
+                </span>
+                <span className="text-[11px] bg-teal-900/60 text-teal-300 px-2.5 py-0.5 rounded-full border border-teal-700">
+                  Gemini Flash AI
+                </span>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
@@ -656,14 +739,27 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={handleProcessPdfWithGemini}
-                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs transition shadow-md flex items-center gap-2 mr-auto cursor-pointer"
-              >
-                <span>⚡</span>
-                <span>بدء التحليل والاستخراج الذكي بـ Gemini</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2 mr-auto">
+                <button
+                  type="button"
+                  onClick={handleExtractPdfLocally}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                  title="استخراج فوري للنصوص والشرائح محلياً داخل المتصفح بدون الحاجة لمفتاح API أو إنترنت"
+                >
+                  <span>⚡</span>
+                  <span>استخراج محلي سريع (بدون API)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleProcessPdfWithGemini}
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                  title="تحليل وصياغة متقدمة بواسطة نموذج Gemini Flash AI"
+                >
+                  <span>🤖</span>
+                  <span>تحليل ذكي بـ Gemini AI</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
