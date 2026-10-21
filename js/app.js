@@ -3368,6 +3368,141 @@ const DEFAULT_POLICIES = [
     ],
     "source": "MANUAL"
   },
+  {
+    "id": "MMS-07",
+    "code": "SMC/MIH/MMS.07",
+    "title": "سياسة الأدوية المتشابهة في الشكل والنطق (LASA)",
+    "category": "NSR",
+    "version": "1",
+    "effectiveDate": "1/7/2025",
+    "reviewDate": "15/6/2028",
+    "date": "15/6/2025",
+    "dept": "الصيدليات - كافة أقسام المستشفى",
+    "purpose": "الأدوية المتشابهة في الشكل والنطق LASA تطبيق تقنية الكتابة المتقطعة Tall Man Lettering....",
+    "responsibilities": "الصيادلة - الأطباء - التمريض",
+    "content_html": "<div class='policy-doc'><h3>السياسة والغرض:</h3><p>منع الأخطاء الدوائية الناتجة عن تشابه أسماء الأدوية في النطق أو الشكل (Look-Alike, Sound-Alike) لتوفير أقصى درجات الأمان للمريض.</p><h3>إجراءات العمل:</h3><ul><li>تحديث قائمة الأدوية المتشابهة دورياً وإتاحتها في كافة أفرع الصيدليات والأقسام الإكلينيكية.</li><li>استخدام تقنية الحروف الكبيرة المتقطعة (Tall Man Lettering) في كتابة الأسماء للتمييز بينها.</li><li>فصل الأدوية المتشابهة على الأرفف وعدم وضعها بجانب بعضها البعض.</li></ul></div>",
+    "plain_text": "الأدوية المتشابهة في الشكل والنطق LASA تطبيق تقنية الكتابة المتقطعة Tall Man Lettering.",
+    "slides": [
+      {
+        "slide_number": 1,
+        "slide_title": "الأدوية المتشابهة LASA (MMS.07)",
+        "bullet_points": [
+          "تحديد قائمة الأدوية المتشابهة في الشكل والنطق وإتاحتها بالصيدليات والأقسام.",
+          "استخدام تقنية الحروف المتقطعة (Tall Man Lettering) للتمييز بين الأسماء.",
+          "فصل تخزين الأدوية المتشابهة على أرفف متباعدة لمنع الخلط والصرف الخاطئ."
+        ]
+      }
+    ],
+    "source": "MANUAL"
+  },
+  {
+    "id": "MMS-08",
+    "code": "SMC/MIH/MMS.08",
+    "title": "سياسة استدعاء واسترجاع الأدوية (Medication Recall)",
+    "category": "NSR",
+    "version": "1",
+    "effectiveDate": "1/7/2025",
+    "reviewDate": "15/6/2028",
+    "date": "15/6/2025",
+    "dept": "الصيدلية الرئيسية - كافة الأقسام",
+    "purpose": "استدعاء واسترجاع الأدوية Medication Recall سحب الأدوية المعيبة أو المحذورة فوراً من الأقسام....",
+    "responsibilities": "رئيس الصيادلة - لجنة الدواء والعلاج",
+    "content_html": "<div class='policy-doc'><h3>السياسة والغرض:</h3><p>وجود آلية سريعة وفعالة لاستدعاء وسحب أي أدوية معيبة أو مغشوشة أو محذورة من قِبل وزارة الصحة من كافة أقسام المستشفى.</p><h3>إجراءات العمل:</h3><ul><li>فور تلقي إخطار الاستدعاء، تقوم الصيدلية بوقف صرف الدواء المعني وحصره في كافة الأقسام.</li><li>سحب كافة الكميات الموجودة بالرعايات والأقسام وإعادتها للصيدلية الرئيسية لاتخاذ الإجراءات النظامية للتخلص منها.</li></ul></div>",
+    "plain_text": "استدعاء واسترجاع الأدوية Medication Recall سحب الأدوية المعيبة أو المحذورة فوراً من الأقسام.",
+    "slides": [
+      {
+        "slide_number": 1,
+        "slide_title": "استدعاء واسترجاع الأدوية Medication Recall (MMS.08)",
+        "bullet_points": [
+          "وجود آلية سريعة لسحب الأدوية المعيبة أو المحذورة من وزارة الصحة فوراً.",
+          "إيقاف الصرف وحصر الكميات الموجودة بجميع الأقسام والرعايات الطبية.",
+          "جمع الأدوية المسترجعة وإعادتها للصيدلية الرئيسية لإتمام إجراءات التخلص الآمن."
+        ]
+      }
+    ],
+    "source": "MANUAL"
+  },
+  {
+    "id": "MMS-12",
+    "code": "SMC/MIH/MMS.12",
+    "title": "سياسة الأمان في وصف وطلب وكتابة الأدوية",
+    "category": "NSR",
+    "version": "1",
+    "effectiveDate": "1/7/2025",
+    "reviewDate": "15/6/2028",
+    "date": "15/6/2025",
+    "dept": "الأقسام الإكلينيكية - الصيدليات",
+    "purpose": "الأمان في وصف وطلب وكتابة الأدوية وضوح الوجبات والجرعات والتوقيتات ومنع الأخطاء....",
+    "responsibilities": "الأطباء - الصيادلة",
+    "content_html": "<div class='policy-doc'><h3>السياسة والغرض:</h3><p>ضمان كتابة الوصفات والطلبات الدوائية بطريقة واضحة ودقيقة ومقروءة لتجنب حدوث أي أخطاء في الصرف أو التنفيذ.</p><h3>إجراءات العمل:</h3><ul><li>كتابة الوصفات الدوائية بوضوح (يفضل إلكترونياً أو بخط واضح) متضمنة اسم الدواء، الجرعة، طريقة الإعطاء، والمدة.</li><li>مراجعة الوصفة طبياً وصيدلانياً قبل اعتمادها وصرفها للمريض.</li></ul></div>",
+    "plain_text": "الأمان في وصف وطلب وكتابة الأدوية وضوح الوجبات والجرعات والتوقيتات ومنع الأخطاء.",
+    "slides": [
+      {
+        "slide_number": 1,
+        "slide_title": "الأمان في وصف وكتابة الأدوية (MMS.12)",
+        "bullet_points": [
+          "كتابة الوصفات والطلبات الدوائية بوضوح تام لتجنب أخطاء القراءة والصرف.",
+          "الالتزام بتضمين كافة تفاصيل الجرعة وطريقة الإعطاء والمدة الزمنية.",
+          "المراجعة الدقيقة للوصفة الطبية قبل اعتمادها وتنفيذها."
+        ]
+      }
+    ],
+    "source": "MANUAL"
+  },
+  {
+    "id": "WFM-01",
+    "code": "SMC/MIH/WFM.01",
+    "title": "سياسة تهيئة العاملين بالمستشفى (Orientation)",
+    "category": "WFM",
+    "version": "1",
+    "effectiveDate": "1/7/2025",
+    "reviewDate": "15/6/2028",
+    "date": "15/6/2025",
+    "dept": "إدارة الموارد البشرية - كافة الأقسام",
+    "purpose": "تهيئة العاملين بالمستشفى Orientation تدريب وتعريف الموظفين الجدد بالسياسات ولوائح السلامة والجودة....",
+    "responsibilities": "مدير الموارد البشرية - رؤساء الأقسام - مسؤولو التدريب",
+    "content_html": "<div class='policy-doc'><h3>السياسة والغرض:</h3><p>تهيئة وتعريف كافة العاملين الجدد (أطباء، تمريض، إداريين) بنظم العمل، سياسات الجودة، واشتراطات السلامة المهنية بالمستشفى قبل تسلم مهام عملهم.</p><h3>إجراءات العمل:</h3><ul><li>تنظيم برنامج تهيئة شامل (Orientation Program) للموظفين الجدد بمعرفة الموارد البشرية والجودة.</li><li>تعريف الموظف بمهام وظيفته، سياسات مكافحة العدوى، خطط الطوارئ، وحقوق وواجبات المرضى.</li></ul></div>",
+    "plain_text": "تهيئة العاملين بالمستشفى Orientation تدريب وتعريف الموظفين الجدد بالسياسات ولوائح السلامة والجودة.",
+    "slides": [
+      {
+        "slide_number": 1,
+        "slide_title": "تهيئة العاملين الجدد بالمستشفى (WFM.01)",
+        "bullet_points": [
+          "تنظيم برنامج تهيئة شامل (Orientation) لكافة الموظفين الجدد قبل تسلم العمل.",
+          "التعريف بسياسات المستشفى، مكافحة العدوى، واشتراطات السلامة المهنية.",
+          "ضمان إلمام العاملين بمهام وظائفهم وحقوق وواجبات المرضى بدقة."
+        ]
+      }
+    ],
+    "source": "MANUAL"
+  },
+  {
+    "id": "WFM-02",
+    "code": "SMC/MIH/WFM.02",
+    "title": "سياسة التدريب والتعليم المستمر",
+    "category": "WFM",
+    "version": "1",
+    "effectiveDate": "1/7/2025",
+    "reviewDate": "15/6/2028",
+    "date": "15/6/2025",
+    "dept": "قسم التدريب والتعليم المستمر - كافة الأقسام",
+    "purpose": "التدريب والتعليم المستمر خطط التدريب السنوية وتطوير مهارات الكوادر الطبية والإدارية....",
+    "responsibilities": "مدير التدريب - رؤساء الأقسام",
+    "content_html": "<div class='policy-doc'><h3>السياسة والغرض:</h3><p>رفع كفاءة وتطوير مهارات كافة الكوادر العاملة بالمستشفى من خلال خطط التدريب والتعليم المستمر لضمان جودة الرعاية الصحية.</p><h3>إجراءات العمل:</h3><ul><li>إعداد خطة تدريب سنوية بناءً على احتياجات الأقسام وتقييم الأداء والمهارات.</li><li>تنظيم ورش عمل وندوات ومحاضرات دورية لمتابعة المستجدات الطبية ومعايير الاعتماد GAHAR.</li></ul></div>",
+    "plain_text": "التدريب والتعليم المستمر خطط التدريب السنوية وتطوير مهارات الكوادر الطبية والإدارية.",
+    "slides": [
+      {
+        "slide_number": 1,
+        "slide_title": "التدريب والتعليم المستمر (WFM.02)",
+        "bullet_points": [
+          "وضع خطة تدريب سنوية مستندة لاحتياجات الأقسام وتقييم الأداء.",
+          "تنظيم المحاضرات وورش العمل لتطوير مهارات الكوادر الطبية والإدارية.",
+          "متابعة التحديثات المستمرة في معايير الجودة والاعتماد (GAHAR)."
+        ]
+      }
+    ],
+    "source": "MANUAL"
+  },
 ];
 
 const DEFAULT_BUNDLES = [
@@ -3725,8 +3860,8 @@ function listenToFirestorePolicies() {
 
 function loadLocalState() {
   try {
-    const savedPol = localStorage.getItem('mih_policies_cache_v9') || localStorage.getItem('mih_policies_cache_v9');
-    const savedBnd = localStorage.getItem('mih_bundles_cache_v9') || localStorage.getItem('mih_bundles_cache_v9');
+    const savedPol = localStorage.getItem('mih_policies_cache_v10') || localStorage.getItem('mih_policies_cache_v10');
+    const savedBnd = localStorage.getItem('mih_bundles_cache_v10') || localStorage.getItem('mih_bundles_cache_v10');
     let list = [];
     if (savedPol) {
       const parsed = JSON.parse(savedPol);
@@ -3758,8 +3893,8 @@ function loadLocalState() {
 
 function saveLocalState() {
   try {
-    localStorage.setItem('mih_policies_cache_v9', JSON.stringify(policiesState));
-    localStorage.setItem('mih_bundles_cache_v9', JSON.stringify(bundlesState));
+    localStorage.setItem('mih_policies_cache_v10', JSON.stringify(policiesState));
+    localStorage.setItem('mih_bundles_cache_v10', JSON.stringify(bundlesState));
   } catch (e) {
     console.warn('Cache write failed:', e);
   }
@@ -4799,6 +4934,33 @@ function resetPolicyEditor() {
 // ==========================================================================
 
 // فتح وضع الوثيقة (Document Mode)
+
+function exportActivePolicyPdf() {
+  if (!activeModalPolicy) return;
+  const el = document.querySelector('#policy-document-modal .print-document-mode');
+  if (!el) return;
+
+  const opt = {
+    margin: [10, 10, 10, 10],
+    filename: (activeModalPolicy.code || 'MIH') + '_' + (activeModalPolicy.title || 'policy').replace(/[\\/:*?"<>|]/g, '_') + '.pdf',
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  if (typeof html2pdf === 'function') {
+    showToast('جاري إنشاء ملف الـ PDF وتنزيله...');
+    html2pdf().set(opt).from(el).save().then(() => {
+      showToast('تم تحميل ملف الـ PDF بنجاح ✅');
+    }).catch(e => {
+      console.warn('PDF export fallback:', e);
+      window.print();
+    });
+  } else {
+    window.print();
+  }
+}
+
 function openDocumentMode(policyId) {
   if (window.location.hash !== '#/policy/' + policyId) {
     window.location.hash = '#/policy/' + policyId;
@@ -5798,6 +5960,7 @@ const DEPARTMENT_GROUPS = [
   { key: 'ACT', name: 'الوصول وانتقال الرعاية (ACT)', icon: '🔄', color: 'emerald', desc: 'إجراءات الدخول والتنويم والتسليم والتسلم والإحالة' },
   { key: 'PCC', name: 'الرعاية المتمركزة حول المريض (PCC)', icon: '🤝', color: 'pink', desc: 'حقوق وتمكين المرضى والموافقة المستنيرة' },
   { key: 'IMT', name: 'إدارة وتكنولوجيا المعلومات (IMT)', icon: '📁', color: 'indigo', desc: 'إدارة وضبط الوثائق وأمن وتداول الملف الطبي' },
+  { key: 'WFM', name: 'إدارة القوى العاملة (WFM)', icon: '👥', color: 'sky', desc: 'سياسات تهيئة وتدريب الكوادر والتعليم الطبي المستمر' },
   { key: 'FMS', name: 'سلامة وأمان المنشأة (FMS)', icon: '🏢', color: 'emerald', desc: 'إدارة النفايات ومخاطر البيئة والمرافق' },
   { key: 'QPI', name: 'تحسين الجودة وسلامة المرضى (QPI)', icon: '📊', color: 'indigo', desc: 'مؤشرات الأداء وبرامج التطوير المستمر' },
 ];

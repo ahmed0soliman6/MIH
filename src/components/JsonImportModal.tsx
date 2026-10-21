@@ -25,6 +25,7 @@ export const JsonImportModal: React.FC<JsonImportModalProps> = ({
   // Helper to map category names or keys to CategoryKey
   const normalizeCategory = (cat: string): CategoryKey => {
     const c = (cat || '').toLowerCase();
+    if (c.includes('wfm') || c.includes('عاملة') || c.includes('تدريب')) return 'WFM';
     if (c.includes('sas') || c.includes('جراحة') || c.includes('تخدير')) return 'SAS';
     if (c.includes('act') || c.includes('وصول') || c.includes('استمرارية') || c.includes('إحالة')) return 'ACT';
     if (c.includes('pcc') || c.includes('متمركزة') || c.includes('مريض')) return 'PCC';

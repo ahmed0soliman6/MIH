@@ -51,6 +51,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.9/pdf-lib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PWA Manifest & html2pdf -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0f766e" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
 
@@ -491,6 +495,8 @@
                   <option value="IMT">إدارة وتكنولوجيا المعلومات (IMT)</option>
                   <option value="ACT">الوصول والاستمرارية وانتقال الرعاية (ACT)</option>
                   <option value="SAS">الجراحة والتخدير والتهدئة (SAS)</option>
+                  <option value="WFM">إدارة القوى العاملة (WFM)</option>
+            <option value="WFM">إدارة القوى العاملة (WFM)</option>
             <option value="ACT">الوصول والاستمرارية وانتقال الرعاية (ACT)</option>
             <option value="SAS">الجراحة والتخدير والتهدئة (SAS)</option>
             <option value="PCC">الرعاية المتمركزة حول المريض (PCC)</option>
@@ -1430,5 +1436,12 @@
 
   <!-- ملف جافا سكريبت الرئيسي للنظام -->
   <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW register note:', err));
+      });
+    }
+  </script>
 </body>
 </html>

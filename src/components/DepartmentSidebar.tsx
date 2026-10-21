@@ -43,6 +43,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
       IMT: [],
       ACT: [],
       SAS: [],
+      WFM: [],
     };
 
     const cleanSearch = searchTerm.trim().toLowerCase();
@@ -65,7 +66,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     return groups;
   }, [policies, searchTerm]);
 
-  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'SAS', 'ER', 'ICD', 'ACT', 'MMS', 'PCC', 'IMT', 'FMS', 'QPI'];
+  const categoriesOrder: CategoryKey[] = ['IPC', 'NSR', 'SAS', 'ER', 'ICD', 'ACT', 'MMS', 'PCC', 'IMT', 'WFM', 'FMS', 'QPI'];
 
   if (!isOpen) return null;
 
