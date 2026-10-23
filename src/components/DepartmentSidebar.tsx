@@ -101,9 +101,14 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           title={isEn ? 'Mansoura International Hospital' : 'مستشفى المنصورة الدولي'}
         >
           {/* Hospital Logo Emblem */}
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-600 to-teal-800 text-white flex items-center justify-center text-xl shadow-sm border border-teal-500/40 shrink-0 select-none">
-            🏥
-          </div>
+          <img
+            src="/assets/logo.jpg"
+            alt={isEn ? 'Mansoura International Hospital' : 'مستشفى المنصورة الدولي'}
+            className="w-10 h-10 rounded-xl object-contain bg-white p-0.5 border border-teal-600/30 dark:border-teal-400/30 shadow-xs shrink-0 select-none"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=MIH&background=0f766e&color=fff&size=80';
+            }}
+          />
           <div className="min-w-0 flex-1">
             <h1 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate leading-tight tracking-tight">
               {isEn ? 'Mansoura Int. Hospital' : 'مستشفى المنصورة الدولي'}
@@ -407,94 +412,69 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
         })}
       </div>
 
-      {/* 5. User Login / Admin Status Section */}
-      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/90 space-y-2.5 shrink-0">
-        <div className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
-          <span>{isEn ? 'ADMIN & AUTH' : 'تسجيل الدخول والإدارة'}</span>
-          {currentUser && isAuthorizedAdmin && (
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-1">
-              <span>👑</span>
-              <span>{t.adminBadge}</span>
-            </span>
-          )}
-        </div>
-
-        {currentUser && isAuthorizedAdmin ? (
-          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <img
-                className="w-7 h-7 rounded-full border border-teal-500 object-cover shrink-0"
-                src={currentUser.photoURL || 'https://ui-avatars.com/api/?name=Admin&background=0f766e&color=fff'}
-                alt="avatar"
-              />
-              <div className="min-w-0 flex-1">
-                <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                  {currentUser.displayName || currentUser.email}
-                </h4>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                  {currentUser.email}
-                </p>
-              </div>
-            </div>
-
+      {/* 5. Bottom Controls: Login/Logout + Language + Dark Mode in the SAME ROW */}
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/90 shrink-0">
+        <div className="flex items-center gap-1.5">
+          {/* Login / Logout */}
+          {currentUser && isAuthorizedAdmin ? (
             <button
               type="button"
               onClick={() => {
                 if (onLogout) onLogout();
                 if (isMobileView) onClose();
               }}
-              className="w-full py-1.5 px-3 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/80 dark:hover:bg-red-900 dark:text-red-300 font-bold text-xs transition cursor-pointer text-center border border-red-200 dark:border-red-900"
+              className="flex-1 min-w-0 py-2 px-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/80 dark:hover:bg-red-900 dark:text-red-300 font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 border border-red-200 dark:border-red-900 active:scale-95 shadow-2xs"
+              title={`${currentUser.displayName || currentUser.email} - ${t.logout}`}
             >
-              {t.logout}
+              <span>🚪</span>
+              <span className="truncate">{t.logout}</span>
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              if (onLogin) onLogin();
-              if (isMobileView) onClose();
-            }}
-            className="w-full py-2 px-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-2xs flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-          >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>{t.adminLogin}</span>
-          </button>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (onLogin) onLogin();
+                if (isMobileView) onClose();
+              }}
+              className="flex-1 min-w-0 py-2 px-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-2xs flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+              title={t.adminLogin}
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span className="truncate">{isEn ? 'Admin' : 'دخول'}</span>
+            </button>
+          )}
 
-        {/* 6. Language Switcher & Dark/Light Mode Switcher Row */}
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/80 dark:border-slate-800">
           {/* Language Toggle */}
           {onToggleLanguage && (
             <button
               type="button"
               onClick={onToggleLanguage}
-              className={`py-1.5 px-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer border active:scale-95 ${
+              className={`flex-1 min-w-0 py-2 px-1.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer border active:scale-95 shadow-2xs ${
                 isEn
-                  ? 'bg-teal-700 text-white border-teal-600 shadow-2xs'
-                  : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-teal-50'
+                  ? 'bg-teal-700 text-white border-teal-600'
+                  : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-teal-50 dark:hover:bg-slate-700'
               }`}
               title={isEn ? 'التبديل إلى العربية' : 'Switch to English'}
             >
               <span>🌐</span>
-              <span className="font-mono text-[11px] font-black">{isEn ? 'عربي' : 'English'}</span>
+              <span className="font-mono text-xs font-black truncate">{isEn ? 'عربي' : 'English'}</span>
             </button>
           )}
 
@@ -503,10 +483,10 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
             <button
               type="button"
               onClick={onToggleDarkMode}
-              className={`py-1.5 px-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer border active:scale-95 ${
+              className={`flex-1 min-w-0 py-2 px-1.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer border active:scale-95 shadow-2xs ${
                 darkMode
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                  : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
               title={
                 darkMode
@@ -519,7 +499,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
               }
             >
               <span>{darkMode ? '☀️' : '🌙'}</span>
-              <span className="text-[11px] font-black">
+              <span className="text-xs font-black truncate">
                 {darkMode ? (isEn ? 'Light' : 'نهاري') : isEn ? 'Dark' : 'ليلي'}
               </span>
             </button>

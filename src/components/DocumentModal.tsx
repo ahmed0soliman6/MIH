@@ -218,43 +218,6 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
           style={{ WebkitOverflowScrolling: 'touch' }}
           className="flex-1 overflow-y-auto overscroll-contain custom-scroll p-4 sm:p-10 space-y-6 print-document-mode text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 select-text"
         >
-          {/* Official Hospital Letterhead Seal & Report Header */}
-          <div className="pb-5 border-b-2 border-slate-900 dark:border-slate-600 flex flex-wrap items-center justify-between gap-4 relative">
-            <div className="flex items-center gap-3">
-              <img
-                src="/assets/logo.jpg"
-                alt={t.hospitalName}
-                className="w-16 h-16 object-contain rounded-lg p-0.5 bg-white border border-slate-200 shadow-xs"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src =
-                    'https://ui-avatars.com/api/?name=MIH&background=991b1b&color=fff&size=128';
-                }}
-              />
-              <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  {t.republicEgypt}
-                </h2>
-                <p className="text-xs text-slate-800 dark:text-slate-300 font-extrabold">
-                  {t.hospitalSub} • {t.hospitalName}
-                </p>
-                <p className="text-[11px] text-teal-800 dark:text-teal-400 font-bold">
-                  {t.qualityDirectorate}
-                </p>
-              </div>
-            </div>
-
-            <div className="font-mono text-xs text-slate-700 dark:text-slate-300 space-y-1 text-right sm:text-left">
-              <div>
-                <strong className="text-slate-900 dark:text-white">{t.policyCode}</strong> {policy.code}
-              </div>
-              <div>
-                <strong className="text-slate-900 dark:text-white">{t.versionNumber}</strong> {policy.version}
-              </div>
-              <div>
-                <strong className="text-slate-900 dark:text-white">{t.approvalDate}</strong> {policy.date || '2025'}
-              </div>
-            </div>
-          </div>
 
           {/* Policy Title & Accreditation Category Meta + Heart Bookmark Button */}
           <div className="space-y-2 relative">
