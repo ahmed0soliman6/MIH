@@ -4,27 +4,18 @@ import { DEFAULT_BUNDLES } from './data/meta';
 import {
   getStoredSettings,
   saveStoredSettings,
-  getCachedPolicies,
-  saveCachedPolicies,
   getCachedBundles,
   saveCachedBundles
 } from './services/storage';
+import { loadFirebase } from './services/firebaseLoader';
+import { isFirebaseConfigured } from './services/firebaseConfig';
 import {
-  initFirebaseService,
-  subscribeToPolicies,
-  subscribeToAuth,
-  getAdminRole,
-  listAdmins,
-  addAdminDoc,
-  updateAdminRole,
-  deleteAdminDoc,
-  loginWithGoogle,
-  logoutUser,
-  savePolicyToFirestore,
-  deletePolicyFromFirestore,
-  seedFirestoreWithDefaults,
-  upsertPoliciesBatch
-} from './services/firebase';
+  loadPolicyIndex,
+  loadPolicyContent,
+  loadSearchTexts
+} from './services/policyData';
+import { usePublishScheduler } from './hooks/usePublishScheduler';
+
 import { Navbar, TabType } from './components/Navbar';
 import { HomeView } from './components/HomeView';
 import { PoliciesView } from './components/PoliciesView';
@@ -51,7 +42,12 @@ async function loadDefaultPolicies(): Promise<Policy[]> {
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings);
-  const [policies, setPolicies] = useState<Policy[]>(getCachedPolicies);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const [searchTexts, setSearchTexts] = useState<Record<string, string> | undefined>(undefined);
+  const adminModeRef = useRef<boolean>(false);
+
   const [bundles, setBundles] = useState<Bundle[]>(getCachedBundles);
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -136,7 +132,7 @@ export const App: React.FC = () => {
   const [adminList, setAdminList] = useState<AdminEntry[]>([]);
   const isAuthorizedAdmin = adminRole !== null;
   const canDelete = adminRole === 'admin' || adminRole === 'superadmin';
-  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(() => isFirebaseConfigured(settings));
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   // Modals
@@ -175,62 +171,155 @@ export const App: React.FC = () => {
       : m;
   };
 
+  // خطاف النشر التلقائي عبر Vercel Deploy Hook
+  const { publishStatus, schedulePublish, triggerPublishNow } = usePublishScheduler({
+    onShowToast: showToast,
+    isAdmin: isAuthorizedAdmin
+  });
+
   const refreshAdminList = async () => {
-    if (fbRef.current.db) setAdminList(await listAdmins(fbRef.current.db));
+    if (fbRef.current.db) {
+      const fb = await loadFirebase();
+      setAdminList(await fb.listAdmins(fbRef.current.db));
+    }
   };
 
-  // تهيئة Firebase والاشتراكات. الصلاحيات تأتي من Firestore فقط (مجموعة admins) وتُفرض بالقواعد.
-  useEffect(() => {
-    const { isConfigured, auth, db } = initFirebaseService(settings);
-    fbRef.current = { app: null, auth, db };
-    setIsFirebaseConnected(isConfigured);
-
-    if (!isConfigured || !db || !auth) {
-      // وضع محلي: نعرض السياسات الافتراضية (تُحمَّل عند الحاجة فقط)
-      loadDefaultPolicies().then((defs) => setPolicies((prev) => (prev.length === 0 ? defs : prev)));
-      return;
-    }
-
-    const unsubscribePolicies = subscribeToPolicies(
-      db,
-      (remote, meta) => {
-        if (remote.length > 0) {
-          setPolicies(remote);
-          saveCachedPolicies(remote);
-        } else {
-          // لا بيانات: إمّا قاعدة فارغة أو دون اتصال بلا كاش → نعرض الافتراضية للقراءة فقط
-          loadDefaultPolicies().then((defs) => setPolicies((prev) => (meta.fromCache && prev.length ? prev : defs)));
-        }
-      },
-      () => {
-        loadDefaultPolicies().then((defs) => setPolicies((prev) => (prev.length === 0 ? defs : prev)));
+  // جلب الفهرس الثابت للزوار (صفر قراءات لفايرستور)
+  const fetchStaticPolicies = async () => {
+    setIsInitialLoading(true);
+    setInitialLoadError(null);
+    try {
+      const list = await loadPolicyIndex();
+      if (!adminModeRef.current) {
+        setPolicies(list);
       }
-    );
-
-    const unsubscribeAuth = subscribeToAuth(auth, async (user) => {
-      setCurrentUser(user);
-      if (!user?.email) {
-        setAdminRole(null);
-        setAdminList([]);
-        return;
-      }
-      const role = await getAdminRole(db, user.email);
-      setAdminRole(role);
-      if (role) {
-        setPermissionDeniedEmail(null);
-        showToast(`مرحباً بك: ${user.displayName || user.email} (${role}) 👑`);
-        if (role === 'admin' || role === 'superadmin') {
-          setAdminList(await listAdmins(db));
-        }
+    } catch (err: any) {
+      console.error('Failed to load static policy index:', err);
+      if (import.meta.env.DEV) {
+        const defs = await loadDefaultPolicies();
+        if (!adminModeRef.current) setPolicies(defs);
       } else {
-        setAdminList([]);
-        setPermissionDeniedEmail(user.email);
+        setInitialLoadError(err.message || 'تعذر تحميل فهرس السياسات.');
       }
-    });
+    } finally {
+      setIsInitialLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaticPolicies();
+  }, []);
+
+  // التحميل المسبق التدريجي في وقت الخمول للزائر (Prefetching)
+  useEffect(() => {
+    if (isInitialLoading || policies.length === 0) return;
+    const idleTimer = setTimeout(() => {
+      if ((navigator as any).connection?.saveData || adminModeRef.current) return;
+      const remaining = policies.filter((p) => p._summary);
+      let idx = 0;
+      const runNext = async () => {
+        if (idx >= remaining.length || adminModeRef.current) return;
+        const p = remaining[idx++];
+        try {
+          await loadPolicyContent(p);
+        } catch (_) {}
+        runNext();
+      };
+      runNext();
+      runNext();
+      runNext();
+    }, 3000);
+
+    return () => clearTimeout(idleTimer);
+  }, [isInitialLoading, policies.length]);
+
+  // فحص اللقطة كل 15 دقيقة عند عودة التركيز للتبويب
+  useEffect(() => {
+    let lastFetch = Date.now();
+    const handleVisChange = async () => {
+      if (document.visibilityState === 'visible' && !adminModeRef.current) {
+        if (Date.now() - lastFetch > 15 * 60 * 1000) {
+          lastFetch = Date.now();
+          try {
+            const fresh = await loadPolicyIndex();
+            if (!adminModeRef.current) setPolicies(fresh);
+          } catch (_) {}
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisChange);
+    return () => document.removeEventListener('visibilitychange', handleVisChange);
+  }, []);
+
+  // إدارة جلسة المدير: لا يُحمَّل Firebase إلا إذا وُجد تلميح جلسة الإدارة في المتصفح
+  useEffect(() => {
+    const hasAdminHint = localStorage.getItem('mih_admin_hint') === '1';
+    if (!hasAdminHint) return;
+
+    let unsubscribePolicies: (() => void) | null = null;
+    let unsubscribeAuth: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const fb = await loadFirebase();
+        const { isConfigured, auth, db } = fb.initFirebaseService(settings);
+        fbRef.current = { app: null, auth, db };
+        setIsFirebaseConnected(isConfigured);
+
+        if (!isConfigured || !auth || !db) return;
+
+        unsubscribeAuth = fb.subscribeToAuth(auth, async (user) => {
+          setCurrentUser(user);
+          if (!user?.email) {
+            setAdminRole(null);
+            setAdminList([]);
+            adminModeRef.current = false;
+            localStorage.removeItem('mih_admin_hint');
+            if (unsubscribePolicies) {
+              unsubscribePolicies();
+              unsubscribePolicies = null;
+            }
+            return;
+          }
+
+          const role = await fb.getAdminRole(db, user.email);
+          setAdminRole(role);
+
+          if (role) {
+            setPermissionDeniedEmail(null);
+            adminModeRef.current = true;
+            localStorage.setItem('mih_admin_hint', '1');
+            showToast(`مرحباً بك: ${user.displayName || user.email} (${role}) 👑`);
+
+            if (role === 'admin' || role === 'superadmin') {
+              setAdminList(await fb.listAdmins(db));
+            }
+
+            // في وضع المدير: الاشتراك الحي والمباشر في Firestore
+            if (!unsubscribePolicies) {
+              unsubscribePolicies = fb.subscribeToPolicies(
+                db,
+                (remoteList) => {
+                  if (adminModeRef.current && remoteList.length > 0) {
+                    setPolicies(remoteList);
+                  }
+                }
+              );
+            }
+          } else {
+            setAdminList([]);
+            setPermissionDeniedEmail(user.email);
+            adminModeRef.current = false;
+          }
+        });
+      } catch (err) {
+        console.warn('Failed to restore admin session:', err);
+      }
+    })();
 
     return () => {
-      unsubscribePolicies();
-      unsubscribeAuth();
+      if (unsubscribeAuth) unsubscribeAuth();
+      if (unsubscribePolicies) unsubscribePolicies();
     };
   }, [settings.firebase]);
 
@@ -241,11 +330,26 @@ export const App: React.FC = () => {
     }
   };
 
-  // Open & Close Document Handlers
-  const handleOpenDocument = (p: Policy) => {
-    setActiveDocPolicy(p);
+  // Open & Close Document Handlers مع دعم التحميل الكسول
+  const handleOpenDocument = async (p: Policy) => {
+    let fullPolicy = p;
+    if (p._summary) {
+      setIsLoading(true);
+      setLoadingMessage('جاري تحميل محتوى السياسة...');
+      try {
+        fullPolicy = await loadPolicyContent(p);
+        setPolicies((prev) => prev.map((item) => (item.id === fullPolicy.id ? fullPolicy : item)));
+      } catch (err: any) {
+        showToast(`تعذر فتح السياسة: ${err.message || err}`);
+        setIsLoading(false);
+        return;
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    setActiveDocPolicy(fullPolicy);
     setActivePresPolicy(null);
-    updateHash(`#/policy/${p.id}`);
+    updateHash(`#/policy/${fullPolicy.id}`);
   };
 
   const handleCloseDocument = () => {
@@ -253,11 +357,26 @@ export const App: React.FC = () => {
     updateHash(currentTab === 'home' ? '#/' : `#/${currentTab}`);
   };
 
-  // Open & Close Presentation Handlers
-  const handleOpenPresentation = (p: Policy) => {
-    setActivePresPolicy(p);
+  // Open & Close Presentation Handlers مع دعم التحميل الكسول
+  const handleOpenPresentation = async (p: Policy) => {
+    let fullPolicy = p;
+    if (p._summary) {
+      setIsLoading(true);
+      setLoadingMessage('جاري تحميل محتوى عرض السياسة...');
+      try {
+        fullPolicy = await loadPolicyContent(p);
+        setPolicies((prev) => prev.map((item) => (item.id === fullPolicy.id ? fullPolicy : item)));
+      } catch (err: any) {
+        showToast(`تعذر فتح العرض: ${err.message || err}`);
+        setIsLoading(false);
+        return;
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    setActivePresPolicy(fullPolicy);
     setActiveDocPolicy(null);
-    updateHash(`#/present/${p.id}`);
+    updateHash(`#/present/${fullPolicy.id}`);
   };
 
   const handleClosePresentation = () => {
@@ -287,7 +406,7 @@ export const App: React.FC = () => {
 
   // Synchronize state with URL Hash for seamless reload (F5) & direct link sharing
   useEffect(() => {
-    const syncFromHash = () => {
+    const syncFromHash = async () => {
       const hash = window.location.hash || '';
       if (!hash || hash === '#' || hash === '#/') return;
 
@@ -299,14 +418,12 @@ export const App: React.FC = () => {
       if (route === 'policy' && param) {
         const found = policies.find((p) => p.id === param || p.code === param || p.code?.replace(/\//g, '_') === param);
         if (found) {
-          setActiveDocPolicy(found);
-          setActivePresPolicy(null);
+          await handleOpenDocument(found);
         }
       } else if (route === 'present' && param) {
         const found = policies.find((p) => p.id === param || p.code === param || p.code?.replace(/\//g, '_') === param);
         if (found) {
-          setActivePresPolicy(found);
-          setActiveDocPolicy(null);
+          await handleOpenPresentation(found);
         }
       } else if (route === 'category' || route === 'department') {
         if (param) {
@@ -325,7 +442,9 @@ export const App: React.FC = () => {
       }
     };
 
-    syncFromHash();
+    if (policies.length > 0) {
+      syncFromHash();
+    }
     window.addEventListener('hashchange', syncFromHash);
     window.addEventListener('popstate', syncFromHash);
     return () => {
@@ -339,63 +458,96 @@ export const App: React.FC = () => {
     setIsAdminLoginOpen(true);
   };
 
-  // Google Login via Firebase Auth — التحقق من الدور يتم في اشتراك onAuthStateChanged
+  // Google Login via Firebase Auth (يتم تحميل Firebase ديناميكياً عند الضغط فقط)
   const handleGoogleLogin = async () => {
-    if (!isFirebaseConnected || !fbRef.current.auth) {
-      throw new Error('لم يتم تهيئة إعدادات Firebase بعد. يرجى إدخال مفاتيح المشروع في الإعدادات.');
+    setIsLoading(true);
+    setLoadingMessage('جاري الاتصال بخدمات Firebase...');
+    try {
+      const fb = await loadFirebase();
+      const { isConfigured, auth, db } = fb.initFirebaseService(settings);
+      fbRef.current = { app: null, auth, db };
+      setIsFirebaseConnected(isConfigured);
+
+      if (!isConfigured || !auth || !db) {
+        throw new Error('لم يتم تهيئة إعدادات Firebase بعد. يرجى إدخال مفاتيح المشروع في الإعدادات.');
+      }
+
+      const user = await fb.loginWithGoogle(auth);
+      if (user?.email) {
+        const role = await fb.getAdminRole(db, user.email);
+        if (role) {
+          adminModeRef.current = true;
+          localStorage.setItem('mih_admin_hint', '1');
+          fb.subscribeToPolicies(db, (remoteList) => {
+            if (adminModeRef.current && remoteList.length > 0) {
+              setPolicies(remoteList);
+            }
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
-    await loginWithGoogle(fbRef.current.auth);
   };
 
   // Logout handler
   const handleLogout = async () => {
     try {
-      if (isFirebaseConnected && fbRef.current.auth) {
-        await logoutUser(fbRef.current.auth);
+      const fb = await loadFirebase();
+      if (fbRef.current.auth) {
+        await fb.logoutUser(fbRef.current.auth);
       }
     } catch (e) {
       console.warn('Logout error:', e);
     }
+    localStorage.removeItem('mih_admin_hint');
+    adminModeRef.current = false;
     setCurrentUser(null);
     setAdminRole(null);
     setAdminList([]);
     if (currentTab === 'admin') {
       setCurrentTab('home');
     }
+    // إعادة تحميل اللقطة الثابتة للزوار
+    await fetchStaticPolicies();
     showToast('تم تسجيل الخروج بنجاح');
   };
 
-  // Policy Save — لا نُظهر "تم الحفظ" إذا فشلت الكتابة السحابية
+  // Policy Save — حفظ في Firestore ثم جدولة النشر التلقائي
   const handleSavePolicy = async (policy: Policy) => {
     let savedToCloud = false;
-    if (isFirebaseConnected && fbRef.current.db) {
+    if (fbRef.current.db) {
       if (!adminRole || !currentUser?.email) {
         showToast('سجّل الدخول بحساب مدير معتمد لحفظ السياسة');
         return;
       }
       try {
-        await savePolicyToFirestore(fbRef.current.db, policy, currentUser.email);
+        const fb = await loadFirebase();
+        await fb.savePolicyToFirestore(fbRef.current.db, policy, currentUser.email);
         savedToCloud = true;
+        // جدولة النشر التلقائي للزوار بعد 30 ثانية
+        schedulePublish();
       } catch (e: any) {
         console.warn('Firestore save failed:', e);
         showToast(`تعذر الحفظ في Firestore: ${friendlyError(e)}`);
-        return; // نُبقي المحرر مفتوحاً حتى لا يضيع عمل المستخدم
+        return;
       }
     }
 
     setPolicies((prev) => {
       const idx = prev.findIndex((p) => p.id === policy.id);
-      const updated = idx > -1 ? prev.map((p, i) => (i === idx ? policy : p)) : [policy, ...prev];
-      saveCachedPolicies(updated);
-      return updated;
+      return idx > -1 ? prev.map((p, i) => (i === idx ? policy : p)) : [policy, ...prev];
     });
 
     setEditingPolicy(null);
-    showToast(savedToCloud ? 'تم الحفظ والمزامنة السحابية في Firestore بنجاح' : 'تم حفظ السياسة محلياً (غير متصل بالسحابة)');
+    showToast(savedToCloud ? 'تم الحفظ في Firestore وجدولة النشر التلقائي' : 'تم حفظ السياسة محلياً');
     handleTabChange('policies');
   };
 
-  // Policy Delete — حذف فعلي يتطلب دور admin أو أعلى
+  // Policy Delete — حذف من Firestore ثم جدولة النشر التلقائي
   const handleDeletePolicy = async (policyId: string) => {
     if (!canDelete) {
       showToast('الحذف متاح لدور admin أو superadmin فقط');
@@ -403,24 +555,23 @@ export const App: React.FC = () => {
     }
     if (!confirm('هل أنت متأكد من رغبتك في حذف هذه السياسة نهائياً؟')) return;
 
-    if (isFirebaseConnected && fbRef.current.db) {
+    if (fbRef.current.db) {
       try {
-        await deletePolicyFromFirestore(fbRef.current.db, policyId);
+        const fb = await loadFirebase();
+        await fb.deletePolicyFromFirestore(fbRef.current.db, policyId);
+        // جدولة النشر التلقائي للزوار
+        schedulePublish();
       } catch (e: any) {
         showToast(`تعذر الحذف من Firestore: ${friendlyError(e)}`);
         return;
       }
     }
 
-    setPolicies((prev) => {
-      const updated = prev.filter((p) => p.id !== policyId);
-      saveCachedPolicies(updated);
-      return updated;
-    });
-    showToast('تم حذف السياسة بنجاح');
+    setPolicies((prev) => prev.filter((p) => p.id !== policyId));
+    showToast('تم حذف السياسة وجدولة نشر التحديث');
   };
 
-  // تهيئة أولية يدوية: تضيف السياسات الافتراضية غير الموجودة فقط ولا تلمس الموجود
+  // تهيئة أولية يدوية: تضيف السياسات الافتراضية غير الموجودة فقط
   const handleSeedFirestore = async () => {
     if (!fbRef.current.db) {
       showToast('يرجى التأكد من ربط وتوصيل Firebase في الإعدادات أولاً');
@@ -433,13 +584,20 @@ export const App: React.FC = () => {
 
     setIsLoading(true);
     setLoadingMessage('جاري إضافة السياسات الافتراضية غير الموجودة إلى Cloud Firestore...');
-    const defaults = await loadDefaultPolicies();
-    const res = await seedFirestoreWithDefaults(fbRef.current.db, defaults, currentUser.email);
-    setIsLoading(false);
-    if (res.success) {
-      showToast(`تمت إضافة ${res.count} سياسة جديدة وتخطي ${res.skipped} موجودة مسبقاً (لم يُكتب فوق أي سياسة).`);
-    } else {
-      showToast(`خطأ في الرفع: ${res.error}`);
+    try {
+      const fb = await loadFirebase();
+      const defaults = await loadDefaultPolicies();
+      const res = await fb.seedFirestoreWithDefaults(fbRef.current.db, defaults, currentUser.email);
+      setIsLoading(false);
+      if (res.success) {
+        showToast(`تمت إضافة ${res.count} سياسة جديدة وتخطي ${res.skipped} موجودة مسبقاً.`);
+        if (res.count > 0) schedulePublish();
+      } else {
+        showToast(`خطأ في الرفع: ${res.error}`);
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      showToast(`خطأ: ${err.message || err}`);
     }
   };
 
@@ -483,7 +641,7 @@ export const App: React.FC = () => {
     showToast('تم تأشير استيفاء جميع عناصر الحزمة بنسبة 100%');
   };
 
-  // Export JSON with UTF-8 BOM for seamless Arabic text compatibility
+  // Export JSON with UTF-8 BOM
   const handleExportJson = () => {
     const dataStr = JSON.stringify({ policies, bundles }, null, 2);
     const blob = new Blob(['\uFEFF' + dataStr], { type: 'application/json;charset=utf-8' });
@@ -498,7 +656,7 @@ export const App: React.FC = () => {
     showToast('تم تصدير ملف السياسات بنجاح (JSON)');
   };
 
-  // Reset to Defaults (محلياً فقط — السحابة هي المصدر الرسمي عند الاتصال)
+  // Reset to Defaults
   const handleResetDefaults = async () => {
     if (isFirebaseConnected) {
       showToast('السحابة هي المصدر الرسمي للسياسات. استخدم زر المزامنة لإضافة الافتراضي غير الموجود.');
@@ -509,7 +667,6 @@ export const App: React.FC = () => {
       const defB = JSON.parse(JSON.stringify(DEFAULT_BUNDLES));
       setPolicies(defP);
       setBundles(defB);
-      saveCachedPolicies(defP);
       saveCachedBundles(defB);
       showToast('تمت استعادة البيانات الافتراضية للمستشفى');
     }
@@ -524,9 +681,11 @@ export const App: React.FC = () => {
     setIsLoading(true);
     setLoadingMessage(`جاري استيراد وحفظ (${imported.length}) سياسة في قاعدة البيانات السحابية...`);
     try {
-      if (isFirebaseConnected && fbRef.current.db && currentUser?.email) {
-        const res = await upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email);
+      if (fbRef.current.db && currentUser?.email) {
+        const fb = await loadFirebase();
+        const res = await fb.upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email);
         if (!res.success) throw new Error(res.error || 'فشل الحفظ السحابي');
+        schedulePublish();
       }
 
       const updated = [...policies];
@@ -536,10 +695,9 @@ export const App: React.FC = () => {
         else updated.unshift(newP);
       });
       setPolicies(updated);
-      saveCachedPolicies(updated);
 
       setIsLoading(false);
-      showToast(`تم استيراد (${imported.length}) سياسات بنجاح`);
+      showToast(`تم استيراد (${imported.length}) سياسات بنجاح وجدولة النشر`);
     } catch (err: any) {
       setIsLoading(false);
       alert(`حدث خطأ أثناء الاستيراد: ${err.message || err}`);
@@ -550,13 +708,15 @@ export const App: React.FC = () => {
   const handleSaveSettings = async (newSettings: SystemSettings) => {
     setSettings(newSettings);
     saveStoredSettings(newSettings);
+    setIsFirebaseConnected(isFirebaseConfigured(newSettings));
     showToast('تم حفظ الإعدادات');
   };
 
-  // إدارة المديرين (superadmin) — تُفرض بالقواعد أيضاً
+  // إدارة المديرين (superadmin)
   const handleAddAdmin = async (email: string, role: AdminRole) => {
     try {
-      await addAdminDoc(fbRef.current.db, email, role, currentUser?.email || '');
+      const fb = await loadFirebase();
+      await fb.addAdminDoc(fbRef.current.db, email, role, currentUser?.email || '');
       await refreshAdminList();
       showToast(`تم اعتماد ${email} بدور ${role}`);
     } catch (e: any) {
@@ -566,17 +726,19 @@ export const App: React.FC = () => {
 
   const handleRemoveAdmin = async (email: string) => {
     try {
-      await deleteAdminDoc(fbRef.current.db, email);
+      const fb = await loadFirebase();
+      await fb.deleteAdminDoc(fbRef.current.db, email);
       await refreshAdminList();
       showToast(`تمت إزالة ${email}`);
     } catch (e: any) {
-      showToast(`تعذرت الإزالة: ${friendlyError(e)}`);
+      showToast(`تعذر الإزالة: ${friendlyError(e)}`);
     }
   };
 
   const handleUpdateAdminRole = async (email: string, role: AdminRole) => {
     try {
-      await updateAdminRole(fbRef.current.db, email, role);
+      const fb = await loadFirebase();
+      await fb.updateAdminRole(fbRef.current.db, email, role);
       await refreshAdminList();
       showToast(`تم تغيير صلاحية ${email} إلى (${role}) بنجاح 👑`);
     } catch (e: any) {
@@ -592,22 +754,21 @@ export const App: React.FC = () => {
           : 'min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-teal-600 selection:text-white transition-colors duration-200'
       }
     >
-      {/* Main navigation header (TopBanner removed as requested; controls integrated directly here) */}
       <Navbar
         currentTab={currentTab}
         onTabChange={handleTabChange}
         policiesCount={policies.length}
         bundlesCount={bundles.length}
-        isAuthorizedAdmin={isAuthorizedAdmin}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLogin={handleOpenLogin}
         onLogout={handleLogout}
+        isAuthorizedAdmin={isAuthorizedAdmin}
         currentUser={currentUser}
         isFirebaseConnected={isFirebaseConnected}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode((prev) => !prev)}
         activeReadingPolicy={activeDocPolicy}
-        onBackFromReading={handleCloseDocument}
+        onBackFromReading={() => setActiveDocPolicy(null)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         lang={lang}
         onToggleLanguage={toggleLanguage}
@@ -617,7 +778,6 @@ export const App: React.FC = () => {
 
       {/* Body Container: Permanent Sidebar + Main Content */}
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
-        {/* Department & Quality Sidebar (Permanent on Desktop, Drawer on Mobile) */}
         <DepartmentSidebar
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
@@ -642,6 +802,21 @@ export const App: React.FC = () => {
 
         {/* Main Views Container */}
         <main className="flex-1 min-w-0 px-3 sm:px-5 lg:px-8 py-6 space-y-8">
+          {initialLoadError && (
+            <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-center space-y-3">
+              <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                ⚠️ {initialLoadError}
+              </p>
+              <button
+                type="button"
+                onClick={fetchStaticPolicies}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-sm"
+              >
+                إعادة المحاولة 🔄
+              </button>
+            </div>
+          )}
+
           {currentTab === 'home' && (
             <HomeView
               policies={policies}
@@ -670,7 +845,12 @@ export const App: React.FC = () => {
               searchQuery={searchQuery}
               selectedCategory={selectedCategory}
               isAuthorizedAdmin={isAuthorizedAdmin}
-              onSearchChange={setSearchQuery}
+              onSearchChange={(q) => {
+                setSearchQuery(q);
+                if (q && !searchTexts) {
+                  loadSearchTexts().then(setSearchTexts).catch(() => {});
+                }
+              }}
               onCategoryChange={handleSelectCategory}
               onOpenDocument={handleOpenDocument}
               onOpenPresentation={handleOpenPresentation}
@@ -683,6 +863,7 @@ export const App: React.FC = () => {
               lang={lang}
               bookmarkedIds={bookmarkedIds}
               onToggleBookmark={toggleBookmark}
+              searchTexts={searchTexts}
             />
           )}
 
@@ -720,6 +901,8 @@ export const App: React.FC = () => {
                 onAddAdmin={handleAddAdmin}
                 onRemoveAdmin={handleRemoveAdmin}
                 onUpdateAdminRole={handleUpdateAdminRole}
+                publishStatus={publishStatus}
+                onTriggerPublishNow={triggerPublishNow}
               />
             </Suspense>
           )}
@@ -777,7 +960,8 @@ export const App: React.FC = () => {
         onClose={() => setPermissionDeniedEmail(null)}
         onRecheck={async () => {
           if (!permissionDeniedEmail || !fbRef.current.db) return;
-          const role = await getAdminRole(fbRef.current.db, permissionDeniedEmail);
+          const fb = await loadFirebase();
+          const role = await fb.getAdminRole(fbRef.current.db, permissionDeniedEmail);
           if (role) {
             setAdminRole(role);
             setPermissionDeniedEmail(null);

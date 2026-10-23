@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Policy, Bundle, CategoryKey } from '../types';
 import { CATEGORY_META, isManualPolicy } from '../data/meta';
+import { prefetchPolicy } from '../services/policyData';
 import { TabType } from './Navbar';
 
 interface HomeViewProps {
@@ -287,6 +288,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {featuredPolicies.map((p) => (
               <div
                 key={p.id}
+                onMouseEnter={() => prefetchPolicy(p)}
+                onTouchStart={() => prefetchPolicy(p)}
                 className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 hover:border-teal-500 dark:hover:border-teal-500 transition space-y-2"
               >
                 <div className="flex items-center justify-between gap-2">

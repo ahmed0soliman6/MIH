@@ -26,3 +26,7 @@ yarn-error.log*
 # Vercel / local
 .vercel
 *.local
+
+# Static snapshot & backups
+public/data/
+backups/

@@ -5,7 +5,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Slide, CategoryKey } from '../types';
 import { callGemini, describeGeminiHttpError } from './geminiClient';
-import { getCurrentIdToken } from './firebase';
+import { loadFirebase } from './firebaseLoader';
 
 // Safely configure PDF.js worker in browser context without crashing
 if (typeof window !== 'undefined' && (pdfjsLib as any).GlobalWorkerOptions) {
@@ -690,7 +690,8 @@ export async function processPdfWithGemini(
   content_html: string;
   slides: Slide[];
 }> {
-  if (!(await getCurrentIdToken())) {
+  const fb = await loadFirebase();
+  if (!(await fb.getCurrentIdToken())) {
     throw new Error('سجّل الدخول بحساب مدير معتمد لاستخدام التحويل الذكي (Gemini).');
   }
 

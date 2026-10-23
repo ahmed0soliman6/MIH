@@ -202,7 +202,7 @@ async function commitInChunks(
   skipIds: Set<string>
 ): Promise<number> {
   const colRef = collection(db, 'policies');
-  const chunkSize = 100;
+  const chunkSize = 8;
   let saved = 0;
   const toWrite = policies.filter((p) => !p.id || !skipIds.has(p.id));
 

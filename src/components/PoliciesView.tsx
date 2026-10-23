@@ -3,6 +3,7 @@ import { Policy, CategoryKey } from '../types';
 import { CATEGORY_META, isManualPolicy } from '../data/meta';
 import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
 import { normalizeArabic } from '../utils/arabic';
+import { prefetchPolicy } from '../services/policyData';
 
 interface PoliciesViewProps {
   policies: Policy[];
@@ -19,6 +20,7 @@ interface PoliciesViewProps {
   lang?: Language;
   bookmarkedIds?: string[];
   onToggleBookmark?: (policyId: string) => void;
+  searchTexts?: Record<string, string>;
 }
 
 export const PoliciesView: React.FC<PoliciesViewProps> = ({
@@ -36,6 +38,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   lang = 'ar',
   bookmarkedIds = [],
   onToggleBookmark,
+  searchTexts,
 }) => {
   const [sourceFilter, setSourceFilter] = useState<'ALL' | 'BOOKMARKS' | 'MANUAL' | 'CORE'>('ALL');
 
@@ -48,14 +51,15 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
 
   const normalizedQuery = useMemo(() => normalizeArabic(searchQuery.trim()), [searchQuery]);
 
-  // فهرس بحث مُطبَّع (يُبنى مرة واحدة لكل تغيّر في السياسات وليس مع كل ضغطة مفتاح)
+  // فهرس بحث مُطبَّع (يُبنى من الحقول الخفيفة + نصوص البحث الكامل إذا توفرت)
   const searchIndex = useMemo(() => {
     const map = new Map<string, string>();
     policies.forEach((p) => {
-      map.set(p.id, normalizeArabic(`${p.title} ${p.code} ${p.dept} ${p.purpose} ${p.plain_text || ''}`));
+      const fullText = (searchTexts && searchTexts[p.id]) || p.plain_text || '';
+      map.set(p.id, normalizeArabic(`${p.title} ${p.code} ${p.dept} ${p.purpose} ${fullText}`));
     });
     return map;
-  }, [policies]);
+  }, [policies, searchTexts]);
 
   const filtered = useMemo(
     () =>
@@ -248,13 +252,16 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             };
             const catTrans = (CATEGORY_TRANSLATIONS[lang] as Record<string, any>)?.[p.category];
             const categoryName = catTrans ? catTrans.name.split(' ')[0] : meta.name.split(' ')[0];
-            const slidesCount = Array.isArray(p.slides) ? p.slides.length : 0;
+            const slidesCount = typeof p.slidesCount === 'number' ? p.slidesCount : (Array.isArray(p.slides) ? p.slides.length : 0);
             const isManual = isManualPolicy(p);
             const isFav = bookmarkedIds.includes(p.id);
 
             return (
               <article
                 key={p.id}
+                onMouseEnter={() => prefetchPolicy(p)}
+                onTouchStart={() => prefetchPolicy(p)}
+                onFocus={() => prefetchPolicy(p)}
                 className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-teal-500 dark:hover:border-teal-400 transition-all flex flex-col justify-between p-5 space-y-4"
               >
                 <div className="space-y-3">

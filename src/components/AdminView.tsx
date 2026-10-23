@@ -93,6 +93,8 @@ interface AdminViewProps {
   onAddAdmin?: (email: string, role: AdminRole) => Promise<void>;
   onRemoveAdmin?: (email: string) => Promise<void>;
   onUpdateAdminRole?: (email: string, role: AdminRole) => Promise<void>;
+  publishStatus?: 'idle' | 'pending' | 'publishing' | 'published' | 'error';
+  onTriggerPublishNow?: () => void;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -114,6 +116,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onAddAdmin,
   onRemoveAdmin,
   onUpdateAdminRole,
+  publishStatus = 'idle',
+  onTriggerPublishNow,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
@@ -685,6 +689,39 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span>🔄</span>
             <span>استعادة الافتراضي</span>
           </button>
+
+          {/* Publish Status Indicator */}
+          {publishStatus && (
+            <div className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 shadow-xs transition ${
+              publishStatus === 'pending'
+                ? 'bg-amber-50 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+                : publishStatus === 'publishing'
+                ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 animate-pulse'
+                : publishStatus === 'published'
+                ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
+                : publishStatus === 'error'
+                ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+            }`}>
+              {publishStatus === 'pending' && <span>⏳ سيُنشر تلقائياً خلال لحظات...</span>}
+              {publishStatus === 'publishing' && <span>🚀 جاري النشر وبناء النسخة الجديدة...</span>}
+              {publishStatus === 'published' && <span>✅ منشور ومتاح للزوار</span>}
+              {publishStatus === 'error' && <span>⚠️ تعذر النشر التلقائي</span>}
+              {publishStatus === 'idle' && <span>☁️ النظام متزامن</span>}
+
+              {onTriggerPublishNow && (
+                <button
+                  type="button"
+                  onClick={onTriggerPublishNow}
+                  disabled={publishStatus === 'publishing'}
+                  className="px-2.5 py-0.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-black text-[11px] cursor-pointer shadow-xs disabled:opacity-50"
+                  title="نشر التعديلات فوراً عبر Vercel Deploy Hook وتجاوز وقت الانتظار"
+                >
+                  نشر الآن
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

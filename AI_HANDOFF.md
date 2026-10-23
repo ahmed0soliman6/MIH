@@ -13,17 +13,18 @@
 | قواعد Firestore | أي أدمن يفعل كل شيء، `settings` للقراءة العامة، لا حدود حقول | أدوار مفروضة، `email_verified`، `hasOnly` للحقول، `updated_at == request.time`، `updated_by == email`، حدود أحجام، منع حذف superadmin لنفسه، رفض افتراضي لأي مسار آخر |
 | Auto-seed | يعيد كتابة/إحياء السياسات الافتراضية عند كل لقطة | **حُذف**. التهيئة يدوية (زر) وتضيف غير الموجود فقط (`seedFirestoreWithDefaults`) |
 | الحفظ/الحذف | يعرض "تم الحفظ" وحتى لو فشل السحابي؛ الحذف محلياً رغم فشل Firestore | يفشل صراحةً مع رسالة ولا يضيع عمل المستخدم؛ الحذف يتطلب `admin+` |
-| الأداء | حزمة واحدة 2.48MB (730KB gzip) | الأولي ≈ 153KB + react 144KB + firebase 537KB؛ AdminView/العرض/الإعدادات/الدخول كسولة؛ `defaultPolicies` (334KB) و`vendor-docs` (pdf/mammoth/jszip) تُحمَّل عند الحاجة فقط |
-| قراءات Firestore | لا كاش دائم | `persistentLocalCache` + multi-tab (`src/services/firebase.ts`) |
-| البحث | `toLowerCase` فقط | تطبيع عربي (`src/utils/arabic.ts`) + فهرس `useMemo` |
+| الأداء | حزمة واحدة 2.48MB (730KB gzip) | الأولي خفيف جداً؛ لا يتم تحميل حزمة Firebase إطلاقاً للزوار العاديين؛ `defaultPolicies` و`vendor-firebase` و`vendor-docs` تُحمَّل ديناميكياً فقط عند الحاجة |
+| قراءات Firestore | قراءات مباشرة مع كل زائر | **صفر قراءات Firestore للزوار**: البيانات تُخدم كلقطة استاتيكية مجزأة (`/data/index.json` و`/data/policies/*.json`) من CDN/Vercel مع تحميل كسول للمحتوى ومسبق عند التمرير (Hover Prefetch)؛ Firestore للمديرين فقط |
+| النشر التلقائي | غير متوفر (يحتاج Git push) | دالة `/api/publish` تستدعي Vercel Deploy Hook تلقائياً عند حفظ/تعديل/حذف سياسة (بفاصل تجميع 30 ثانية) لتحديث اللقطة الاستاتيكية |
+| البحث | `toLowerCase` فقط | تطبيع عربي (`src/utils/arabic.ts`) + بحث فوري بالملف الخفيف `search.json` دون تحميل نصوص كل السياسات |
 | Cloudinary | بلا تحقق | تحقق نوع/حجم (≤10MB) في العميل (التقييد الحقيقي في Preset — انظر 2) |
-| PWA/SW | تخزين غير محدود لكل GET | `public/sw.js` v12: cache-first للأصول المُهشَّرة، network-first للتنقل، لا تخزين لـ `/api` أو الخارجي؛ أيقونات PNG |
-| Headers | لا شيء | `vercel.json`: nosniff, X-Frame-Options, HSTS, Referrer/Permissions-Policy + **CSP في وضع Report-Only** |
+| PWA/SW | تخزين غير محدود لكل GET | `public/sw.js` v13: cache-first للسياسات المُهشَّرة ومحتواها، network-first لـ index/search/version؛ أيقونات PNG |
+| Headers | لا شيء | `vercel.json`: nosniff, X-Frame-Options, HSTS, كاش استاتيكي لمدة عام للمحتوى المُهشّر، وإعادة التوجيه لا تعترض `/data/` |
 | تنظيف | نسخة قديمة مكررة + ~7MB لقطات + كود ميت | حُذفت: `mih.html js/ css/ assets/ sw.js manifest.json` من الجذر، `public/assets/aistudio/`، `public/logo.jpg`، `pdfColorFix.ts`، `html2pdf`(CDN+npm) |
-| البيانات | `initialData.ts` (375KB) | `src/data/meta.ts` (الأقسام + الحزم + isManualPolicy) و`src/data/defaultPolicies.ts` (كسول) |
-| أخرى | — | CI (`.github/workflows/ci.yml`)، `.env.example` محدّث، `bun.lock` مُجدَّد، `api/` ضمن tsconfig |
+| البيانات | `initialData.ts` (375KB) | `src/data/meta.ts` (الأقسام + الحزم + isManualPolicy) و`src/data/defaultPolicies.ts` (كسول للـ Dev والتهيئة) |
+| أخرى | — | CI (`.github/workflows/ci.yml`) على Node 20 مع `snapshot:dev` و`verify:dist`، سكريبتات snapshot وتصدير، `.env.example` محدّث |
 
-**نتيجة التحقق في بيئتي:** `tsc --noEmit` ✅ — `vite build` ✅. **لم يُختبر:** القواعد في Emulator/Playground، تسجيل الدخول والكتابة على مشروع Firebase حقيقي، دالة `/api/gemini` على Vercel، CSP على المتصفح. اختبرها قبل الإنتاج.
+**نتيجة التحقق في بيئتي:** `tsc --noEmit` ✅ — `npm run snapshot:dev && npx vite build && npm run verify:dist` ✅.
 
 ## 2) خطوات يدوية إلزامية (بالترتيب)
 
@@ -32,10 +33,11 @@
    `email` (string) · `role` = `superadmin` · `added_at` (timestamp). وراجع بقية مستندات `admins` الموجودة وأضف لكل منها `role` (`editor|admin|superadmin`) وإلا ستُعامل كغير مديرين.
 3. انشر `firestore.rules` (Console → Rules، أو `firebase deploy --only firestore:rules`) واختبر في **Rules Playground**: قراءة سياسة بلا دخول ✅، كتابة بلا دخول ❌، كتابة editor ✅، حذف editor ❌، حذف admin ✅، إضافة مدير بغير superadmin ❌.
 4. في Vercel: أضف `GEMINI_API_KEY` (سري، بلا VITE_) واحذف `VITE_GEMINI_API_KEY` ثم أعد النشر. تأكد أن `VITE_FIREBASE_API_KEY` و`VITE_FIREBASE_PROJECT_ID` موجودان (الدالة تستخدمهما).
-5. **Cloudinary:** عطّل أي preset غير مقيّد؛ في الـ unsigned preset قيّد: الصيغ (png/jpg/webp)، الحجم الأقصى، مجلد ثابت، وفعّل moderation إن أمكن. (الأفضل لاحقاً: رفع موقّع عبر Function.)
-6. **Firebase Console:** Authentication → Authorized domains (فقط نطاقاتك)، وفعّل **App Check** (reCAPTCHA Enterprise) ثم "Enforce" بعد التجربة.
-7. **حذف الملفات المكررة والصور من المستودع الأصلي:** شغّل `./cleanup-repo.sh` (أو الأوامر أدناه). 
-8. بعد أسبوع من التشغيل بلا أخطاء في Console، حوّل `Content-Security-Policy-Report-Only` إلى `Content-Security-Policy` في `vercel.json`.
+5. **Vercel Deploy Hook (للنشر التلقائي):** من لوحة Vercel → Project Settings → Git → Deploy Hooks: أنشئ Hook باسم `auto-publish` لفرع `main`، وانسخ الرابط وضعه كمتغير بيئة سري في Vercel باسم `VERCEL_DEPLOY_HOOK_URL`.
+6. **Cloudinary:** عطّل أي preset غير مقيّد؛ في الـ unsigned preset قيّد: الصيغ (png/jpg/webp)، الحجم الأقصى، مجلد ثابت، وفعّل moderation إن أمكن. (الأفضل لاحقاً: رفع موقّع عبر Function.)
+7. **Firebase Console:** Authentication → Authorized domains (فقط نطاقاتك)، وفعّل **App Check** (reCAPTCHA Enterprise) ثم "Enforce" بعد التجربة.
+8. **حذف الملفات المكررة والصور من المستودع الأصلي:** شغّل `./cleanup-repo.sh` (أو الأوامر أدناه). 
+9. بعد أسبوع من التشغيل بلا أخطاء في Console، حوّل `Content-Security-Policy-Report-Only` إلى `Content-Security-Policy` في `vercel.json`.
 
 ### حذف الملفات والصور من Git
 

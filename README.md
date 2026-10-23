@@ -12,14 +12,17 @@
    - بحث شامل فوري في العناوين والأكواد والنص الكامل للسياسات.
    - فلترة لحظية حسب أقسام المستشفى (المعايير الوطنية NSR، مكافحة العدوى IPC، الأدوية MMS، الجودة QPI، السلامة FMS، الطوارئ ER).
 
-2. **لوحة إدارة مؤمنة بحساب Google (Firebase Auth):**
+2. **تصفح استاتيكي فائق السرعة بدون استهلاك Firestore (Zero Firestore Reads):**
+   - تحميل فوري لملف فهرس السياسات الخفيف (`/data/index.json`) دون أي اتصال بـ Firestore للزوار العاديين.
+   - تحميل كسول لمحتوى السياسة (`/data/policies/*.json`) مع تحميل مسبق عند تمرير المؤشر (Hover Prefetch).
+   - حزمة جافاسكريبت أولية خفيفة بدون تحميل Firebase SDK للزوار (يُحمّل فقط للمديرين عند الحاجة).
+   - النشر التلقائي للسياسات (Auto-publish) عبر Vercel Deploy Hook عند قيام المدير بإضافة أو تعديل أي سياسة.
+
+3. **لوحة إدارة مؤمنة بحساب Google (Firebase Auth & Firestore):**
    - تسجيل الدخول الإداري عبر Google Sign-In مع دعم وضع المحاكاة المحلي للاختبار السريع.
    - التحقق من دور المدير من مجموعة `admins` في Firestore (تُفرض بالقواعد).
-   - إبقاء المستخدمين غير المصرح لهم في وضع التصفح العام مع تنبيه لطيف.
+   - حفظ وتعديل السياسات مباشرة في Firestore كمرجع وحيد للحقيقة (Single Source of Truth).
 
-3. **قاعدة بيانات Firestore خفيفة وسريعة:**
-   - حفظ السياسات كبيانات JSON مهيكلة تتضمن نص الوثيقة (HTML) والشرائح التفاعلية (Slides).
-   - دعم التزامن الحي (Real-time snapshots) والتخزين الاحتياطي المحلي في المتصفح.
 
 4. **محرك الرفع والتحويل الذكي (Smart In-Browser & AI Engine):**
    - **ملفات Word (`.docx`):** استخراج النص والفقرات والجداول وبناء الشرائح تلقائياً في المتصفح عبر `mammoth`.
@@ -87,19 +90,25 @@
 ## 🚀 التشغيل ورفع التعديلات إلى GitHub
 
 ```bash
-# تثبيت التبعيات (المستودع يستخدم bun.lock)
-bun install   # أو: npm install
+# تثبيت التبعيات
+npm install   # أو: bun install
 
 # تشغيل خادم التطوير (الواجهة فقط)
 npm run dev
 
-# لتجربة التحويل الذكي محلياً (يحتاج /api/gemini):
+# بناء لقطة السياسات المحلية للـ dev وبناء الحزمة
+npm run snapshot:dev
+npm run build
+npm run verify:dist
+
+# لتجربة التحويل الذكي ونظام النشر محلياً (يحتاج /api):
 npx vercel dev
 
-# راجع AI_HANDOFF.md لخطوات النشر الأمنية الإلزامية بعد هذا التحديث
+# راجع AI_HANDOFF.md لخطوات النشر الأمنية وإعداد Vercel Deploy Hook
 
 # رفع التحديثات إلى مستودع GitHub
 git add .
-git commit -m "feat: extract and integrate 320-page hospital quality manual policies"
+git commit -m "feat: static policy snapshot, lazy content, auto-publish via deploy hook"
 git push origin main
 ```
+
