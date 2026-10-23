@@ -19,6 +19,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
   deleteDoc,
   writeBatch,
   serverTimestamp,
@@ -342,6 +343,15 @@ export async function addAdminDoc(db: Firestore | null, email: string, role: Adm
     role,
     added_at: serverTimestamp(),
     added_by: addedBy.trim().toLowerCase()
+  });
+}
+
+export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole): Promise<void> {
+  if (!db) throw new Error('Firestore غير متصل');
+  const clean = email.trim().toLowerCase();
+  await updateDoc(doc(db, 'admins', clean), {
+    role,
+    updated_at: serverTimestamp()
   });
 }
 

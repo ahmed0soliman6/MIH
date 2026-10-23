@@ -16,6 +16,7 @@ import {
   getAdminRole,
   listAdmins,
   addAdminDoc,
+  updateAdminRole,
   deleteAdminDoc,
   loginWithGoogle,
   logoutUser,
@@ -573,6 +574,16 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpdateAdminRole = async (email: string, role: AdminRole) => {
+    try {
+      await updateAdminRole(fbRef.current.db, email, role);
+      await refreshAdminList();
+      showToast(`تم تغيير صلاحية ${email} إلى (${role}) بنجاح 👑`);
+    } catch (e: any) {
+      showToast(`تعذر تعديل الصلاحية: ${friendlyError(e)}`);
+    }
+  };
+
   return (
     <div
       className={
@@ -708,6 +719,7 @@ export const App: React.FC = () => {
                 currentUserEmail={currentUser?.email || ''}
                 onAddAdmin={handleAddAdmin}
                 onRemoveAdmin={handleRemoveAdmin}
+                onUpdateAdminRole={handleUpdateAdminRole}
               />
             </Suspense>
           )}
