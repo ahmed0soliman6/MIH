@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Policy, CategoryKey } from '../types';
 import { CATEGORY_META } from '../data/meta';
 import { sanitizeHtml } from '../utils/sanitize';
+import { highlightHtmlText } from '../utils/arabic';
 import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
 
 interface DocumentModalProps {
@@ -14,6 +15,7 @@ interface DocumentModalProps {
   lang?: Language;
   isBookmarked?: boolean;
   onToggleBookmark?: (policyId: string) => void;
+  searchQuery?: string;
 }
 
 export const DocumentModal: React.FC<DocumentModalProps> = ({
@@ -26,6 +28,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   lang = 'ar',
   isBookmarked = false,
   onToggleBookmark,
+  searchQuery = '',
 }) => {
   const [readingProgress, setReadingProgress] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -53,6 +56,17 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     }
   }, [isOpen]);
 
+  // Calculate highlighted HTML and match count
+  const { renderedHtml, matchCount } = useMemo(() => {
+    if (!policy?.content_html) return { renderedHtml: '', matchCount: 0 };
+    const clean = sanitizeHtml(policy.content_html);
+    if (!searchQuery || !searchQuery.trim()) {
+      return { renderedHtml: clean, matchCount: 0 };
+    }
+    const res = highlightHtmlText(clean, searchQuery.trim());
+    return { renderedHtml: res.html, matchCount: res.matchCount };
+  }, [policy?.content_html, searchQuery]);
+
   // Reset scroll and progress on policy change
   useEffect(() => {
     if (isOpen && scrollContainerRef.current) {
@@ -60,6 +74,19 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
       setReadingProgress(0);
     }
   }, [isOpen, policy?.id]);
+
+  // التمرير التلقائي السلس إلى أول نتيجة بحث مظللة (Auto-scroll to first match)
+  useEffect(() => {
+    if (isOpen && searchQuery && searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        const firstMatch = scrollContainerRef.current?.querySelector('.search-highlight');
+        if (firstMatch) {
+          firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, policy?.id, searchQuery, matchCount]);
 
   // Handle scroll progress
   const handleScroll = () => {
@@ -131,6 +158,12 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
                 {policy.code} • {t.policyDocApproved} ({readingProgress}%)
               </span>
             </div>
+            {matchCount > 0 && (
+              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-400 text-amber-950 shrink-0 shadow-xs animate-pulse">
+                <span>🔍</span>
+                <span>{matchCount} مطابقة للبحث</span>
+              </span>
+            )}
           </div>
 
           {/* Action Buttons: Presentation, Bookmark Heart Toggle, Edit, & Close (PDF report button removed per request) */}
@@ -311,10 +344,10 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
             <p className="text-sm font-semibold leading-relaxed text-teal-950 dark:text-teal-100">{policy.purpose}</p>
           </div>
 
-          {/* Full Rich HTML Content with smooth reading lines */}
+          {/* Full Rich HTML Content with smooth reading lines & search highlight */}
           <div
             className="policy-content-html border-t border-slate-200 dark:border-slate-800 pt-4 text-slate-900 dark:text-slate-100 leading-relaxed font-normal"
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(policy.content_html) }}
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
 
           {/* Footer info with Hospital Branding & Date */}

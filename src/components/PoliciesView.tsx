@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Policy, CategoryKey } from '../types';
 import { CATEGORY_META } from '../data/meta';
 import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
@@ -20,7 +20,25 @@ interface PoliciesViewProps {
   bookmarkedIds?: string[];
   onToggleBookmark?: (policyId: string) => void;
   searchTexts?: Record<string, string>;
+  isLoading?: boolean;
 }
+
+interface QuickChip {
+  id: string;
+  label: string;
+  labelEn: string;
+  categoryFilter?: string;
+  keywordFilter?: string;
+}
+
+const EMERGENCY_CHIPS: QuickChip[] = [
+  { id: 'ALL', label: '🌐 الكل', labelEn: '🌐 All Policies', categoryFilter: 'ALL' },
+  { id: 'EMERGENCY', label: '🚨 الكود الأزرق والطوارئ', labelEn: '🚨 Code Blue & Emergency', categoryFilter: 'ER', keywordFilter: 'انعاش طوارئ ازرق blue cpr' },
+  { id: 'BUNDLES', label: '🩺 حزم الرعاية الإكلينيكية (Bundles)', labelEn: '🩺 Clinical Bundles', keywordFilter: 'حزمة حزم bundle clabsi cauti vap ssi' },
+  { id: 'IPC', label: '🛡️ مكافحة العدوى IPC', labelEn: '🛡️ Infection Control IPC', categoryFilter: 'IPC' },
+  { id: 'MMS', label: '💊 الأدوية عالية الخطورة MMS', labelEn: '💊 High-Alert Meds MMS', categoryFilter: 'MMS' },
+  { id: 'NSR', label: '📋 المعايير الوطنية للسلامة NSR', labelEn: '📋 National Safety NSR', categoryFilter: 'NSR' },
+];
 
 export const PoliciesView: React.FC<PoliciesViewProps> = ({
   policies,
@@ -37,44 +55,136 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   lang = 'ar',
   bookmarkedIds = [],
   onToggleBookmark,
+  isLoading = false,
 }) => {
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
 
-  const normalizedQuery = useMemo(() => normalizeArabic(searchQuery.trim()), [searchQuery]);
+  const [activeChipId, setActiveChipId] = useState<string>('ALL');
 
-  // فهرس بحث مُطبَّع (يُبنى مرة واحدة لكل تغيّر في السياسات وليس مع كل ضغطة مفتاح)
+  const normalizedQuery = useMemo(() => normalizeArabic(searchQuery.trim()), [searchQuery]);
+  const queryTokens = useMemo(() => normalizedQuery.split(/\s+/).filter(Boolean), [normalizedQuery]);
+
+  // بناء فهرس بحث مُطبَّع شامل لكافة الحقول (عنوان، كود، قسم، غرض، نص، أقسام مستهدفة)
   const searchIndex = useMemo(() => {
     const map = new Map<string, string>();
     policies.forEach((p) => {
-      map.set(p.id, normalizeArabic(`${p.title} ${p.code} ${p.dept} ${p.purpose} ${p.plain_text || ''}`));
+      const combined = [
+        p.title,
+        p.code,
+        p.dept,
+        p.target_departments,
+        p.category,
+        p.purpose,
+        p.plain_text,
+        p.summary,
+        p.effectiveDate,
+        Array.isArray(p.responsibilities) ? p.responsibilities.join(' ') : p.responsibilities,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      map.set(p.id, normalizeArabic(combined));
     });
     return map;
   }, [policies]);
 
   const isBookmarksCategory = selectedCategory === 'BOOKMARKS';
 
-  const filtered = useMemo(
-    () =>
-      policies.filter((p) => {
-        const isFav = bookmarkedIds.includes(p.id);
-        if (isBookmarksCategory && !isFav) return false;
+  // معالجة الضغط على شرائح الوصول السريع للطوارئ
+  const handleChipClick = (chip: QuickChip) => {
+    setActiveChipId(chip.id);
+    if (chip.categoryFilter) {
+      onCategoryChange(chip.categoryFilter);
+    } else {
+      onCategoryChange('ALL');
+    }
+  };
 
-        const matchCategory =
-          selectedCategory === 'ALL' ||
-          selectedCategory === 'BOOKMARKS' ||
-          p.category === selectedCategory;
-        const matchQuery = !normalizedQuery || (searchIndex.get(p.id) || '').includes(normalizedQuery);
-        return matchCategory && matchQuery;
-      }),
-    [policies, isBookmarksCategory, bookmarkedIds, selectedCategory, normalizedQuery, searchIndex]
-  );
+  const filtered = useMemo(() => {
+    const activeChip = EMERGENCY_CHIPS.find((c) => c.id === activeChipId);
+    const chipKeywords = activeChip?.keywordFilter
+      ? normalizeArabic(activeChip.keywordFilter).split(/\s+/).filter(Boolean)
+      : [];
+
+    return policies.filter((p) => {
+      const isFav = bookmarkedIds.includes(p.id);
+      if (isBookmarksCategory && !isFav) return false;
+
+      // فحص التصنيف
+      let matchCategory =
+        selectedCategory === 'ALL' ||
+        selectedCategory === 'BOOKMARKS' ||
+        p.category === selectedCategory;
+
+      const indexedText = searchIndex.get(p.id) || '';
+
+      // فحص شريحة الطوارئ النشطة إذا كانت تعتمد على الكلمات المفتاحية مثل Bundles
+      if (activeChipId === 'BUNDLES' && chipKeywords.length > 0) {
+        const matchesAnyKeyword = chipKeywords.some((kw) => indexedText.includes(kw));
+        if (!matchesAnyKeyword) return false;
+      } else if (activeChipId === 'EMERGENCY') {
+        const isErCat = p.category === 'ER';
+        const matchesEmergencyKw = chipKeywords.some((kw) => indexedText.includes(kw));
+        if (!isErCat && !matchesEmergencyKw) return false;
+      } else if (activeChip?.categoryFilter && activeChip.categoryFilter !== 'ALL') {
+        if (p.category !== activeChip.categoryFilter) return false;
+      }
+
+      // فحص كلمات البحث (تطبيع عربي متعدد الكلمات: أ/إ/آ/ا ، ة/ه ، ى/ي ، والتشكيل)
+      const matchQuery =
+        queryTokens.length === 0 ||
+        queryTokens.every((token) => indexedText.includes(token));
+
+      return matchCategory && matchQuery;
+    });
+  }, [
+    policies,
+    isBookmarksCategory,
+    bookmarkedIds,
+    selectedCategory,
+    queryTokens,
+    searchIndex,
+    activeChipId,
+  ]);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 select-none">
+      {/* Quick Access Emergency Chips Bar (Top of policy library as compact scrollable chips) */}
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto custom-scroll pb-1 pt-0.5 no-scrollbar">
+          <span className="text-xs font-black text-slate-500 dark:text-slate-400 shrink-0 px-2 flex items-center gap-1">
+            <span>⚡</span>
+            <span className="hidden sm:inline">{isEn ? 'Quick Filter:' : 'الوصول السريع:'}</span>
+          </span>
+          {EMERGENCY_CHIPS.map((chip) => {
+            const isSelected = activeChipId === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => handleChipClick(chip)}
+                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border active:scale-95 flex items-center gap-1.5 shadow-2xs ${
+                  isSelected
+                    ? 'bg-teal-700 dark:bg-teal-600 text-white border-teal-600 dark:border-teal-500 shadow-sm ring-2 ring-teal-500/20'
+                    : 'bg-slate-50 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span>{isEn ? chip.labelEn : chip.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Subtle Admin Action Bar (only if authorized admin) */}
       {isAuthorizedAdmin && (
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center gap-2">
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+            {isEn ? 'Total Policies Shown:' : 'إجمالي السياسات المعروضة:'}{' '}
+            <span className="text-teal-700 dark:text-teal-400 font-black font-mono">
+              {filtered.length}
+            </span>
+          </div>
           <button
             type="button"
             onClick={onAddPolicy}
@@ -86,8 +196,32 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
         </div>
       )}
 
-      {/* Policies Grid or Empty State */}
-      {filtered.length === 0 ? (
+      {/* Skeleton Loading State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4 animate-pulse shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-28 h-5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                <div className="w-16 h-4 bg-slate-200 dark:bg-slate-700 rounded-md" />
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="w-5/6 h-5 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                <div className="w-1/2 h-5 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+              </div>
+              <div className="w-full h-12 bg-slate-100 dark:bg-slate-700/50 rounded-xl" />
+              <div className="w-full h-8 bg-slate-100 dark:bg-slate-700/60 rounded-xl" />
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <div className="flex-1 h-9 bg-teal-100 dark:bg-teal-950/60 rounded-xl" />
+                <div className="w-20 h-9 bg-slate-200 dark:bg-slate-700 rounded-xl" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         isBookmarksCategory ? (
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-rose-100 dark:border-rose-950/60 p-12 text-center space-y-4 shadow-xs transition-colors">
             <span className="text-5xl block animate-bounce">❤️</span>
@@ -102,6 +236,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
               onClick={() => {
                 onSearchChange('');
                 onCategoryChange('ALL');
+                setActiveChipId('ALL');
               }}
               className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition cursor-pointer shadow-xs"
             >
@@ -124,6 +259,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
               onClick={() => {
                 onSearchChange('');
                 onCategoryChange('ALL');
+                setActiveChipId('ALL');
               }}
               className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition cursor-pointer"
             >

@@ -86,7 +86,10 @@ interface AdminViewProps {
   onShowToast: (message: string) => void;
   onUpdateSettings: (settings: SystemSettings) => void;
   onSeedFirestore?: () => Promise<void>;
-  onImportPolicies?: (imported: Policy[]) => Promise<void>;
+  onImportPolicies?: (
+    imported: Policy[],
+    onProgress?: (progress: { current: number; total: number; percent: number }) => void
+  ) => Promise<{ addedCount?: number; updatedCount?: number } | void>;
   adminRole?: AdminRole | null;
   adminList?: AdminEntry[];
   currentUserEmail?: string;
@@ -1693,6 +1696,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           onClose={() => setIsJsonModalOpen(false)}
           onImportPolicies={onImportPolicies}
           onShowToast={onShowToast}
+          existingPolicies={policies || []}
         />
       )}
     </section>

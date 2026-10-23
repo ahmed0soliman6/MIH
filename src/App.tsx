@@ -680,36 +680,51 @@ export const App: React.FC = () => {
     }
   };
 
-  // Import Batch Policies & Sync to Firestore
-  const handleImportBatchPolicies = async (imported: Policy[]) => {
+  // Import Batch Policies & Sync to Firestore with chunked upsert & progress
+  const handleImportBatchPolicies = async (
+    imported: Policy[],
+    onProgress?: (progress: { current: number; total: number; percent: number }) => void
+  ): Promise<{ addedCount?: number; updatedCount?: number } | void> => {
     if (isFirebaseConnected && (!adminRole || !currentUser?.email)) {
       showToast('سجّل الدخول بحساب مدير معتمد لاستيراد السياسات');
-      return;
+      throw new Error('سجّل الدخول بحساب مدير معتمد لاستيراد السياسات');
     }
-    setIsLoading(true);
-    setLoadingMessage(`جاري استيراد وحفظ (${imported.length}) سياسة في قاعدة البيانات السحابية...`);
-    try {
-      if (fbRef.current.db && currentUser?.email) {
-        const fb = await loadFirebase();
-        const res = await fb.upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email);
-        if (!res.success) throw new Error(res.error || 'فشل الحفظ السحابي');
-        schedulePublish();
-      }
 
-      const updated = [...policies];
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    if (fbRef.current.db && currentUser?.email) {
+      const fb = await loadFirebase();
+      const res = await fb.upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email, onProgress);
+      if (!res.success) throw new Error(res.error || 'فشل الحفظ السحابي');
+      addedCount = res.addedCount;
+      updatedCount = res.updatedCount;
+      schedulePublish();
+    } else {
+      const existingIds = new Set(policies.map((p) => p.id));
+      imported.forEach((p) => {
+        if (existingIds.has(p.id)) updatedCount++;
+        else addedCount++;
+      });
+      if (onProgress) {
+        onProgress({ current: imported.length, total: imported.length, percent: 100 });
+      }
+    }
+
+    setPolicies((prev) => {
+      const updated = [...prev];
       imported.forEach((newP) => {
         const idx = updated.findIndex((p) => p.id === newP.id || p.code === newP.code);
-        if (idx !== -1) updated[idx] = newP;
-        else updated.unshift(newP);
+        if (idx !== -1) {
+          updated[idx] = { ...updated[idx], ...newP };
+        } else {
+          updated.unshift(newP);
+        }
       });
-      setPolicies(updated);
+      return updated;
+    });
 
-      setIsLoading(false);
-      showToast(`تم استيراد (${imported.length}) سياسات بنجاح وجدولة النشر`);
-    } catch (err: any) {
-      setIsLoading(false);
-      alert(`حدث خطأ أثناء الاستيراد: ${err.message || err}`);
-    }
+    return { addedCount, updatedCount };
   };
 
   // Save Settings (Firebase / Cloudinary)
@@ -871,6 +886,7 @@ export const App: React.FC = () => {
               bookmarkedIds={bookmarkedIds}
               onToggleBookmark={toggleBookmark}
               searchTexts={searchTexts}
+              isLoading={isInitialLoading}
             />
           )}
 
@@ -930,6 +946,7 @@ export const App: React.FC = () => {
         lang={lang}
         isBookmarked={activeDocPolicy ? bookmarkedIds.includes(activeDocPolicy.id) : false}
         onToggleBookmark={toggleBookmark}
+        searchQuery={searchQuery}
       />
 
       <Suspense fallback={null}>
