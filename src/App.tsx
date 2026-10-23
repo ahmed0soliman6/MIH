@@ -42,6 +42,10 @@ async function loadDefaultPolicies(): Promise<Policy[]> {
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings);
+  // جلسة المدير نشطة؟ (تلميح أداء فقط، ليس أمنياً) — تحميل Firebase مشروط بها
+  const [adminSessionActive, setAdminSessionActive] = useState<boolean>(
+    () => localStorage.getItem('mih_admin_hint') === '1'
+  );
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
@@ -265,8 +269,7 @@ export const App: React.FC = () => {
 
   // إدارة جلسة المدير: لا يُحمَّل Firebase إلا إذا وُجد تلميح جلسة الإدارة في المتصفح
   useEffect(() => {
-    const hasAdminHint = localStorage.getItem('mih_admin_hint') === '1';
-    if (!hasAdminHint) return;
+    if (!adminSessionActive) return;
 
     let unsubscribePolicies: (() => void) | null = null;
     let unsubscribeAuth: (() => void) | null = null;
@@ -287,6 +290,7 @@ export const App: React.FC = () => {
             setAdminList([]);
             adminModeRef.current = false;
             localStorage.removeItem('mih_admin_hint');
+            setAdminSessionActive(false);
             if (unsubscribePolicies) {
               unsubscribePolicies();
               unsubscribePolicies = null;
@@ -322,6 +326,7 @@ export const App: React.FC = () => {
             setAdminList([]);
             setPermissionDeniedEmail(user.email);
             adminModeRef.current = false;
+            localStorage.removeItem('mih_admin_hint');
           }
         });
       } catch (err) {
@@ -333,7 +338,7 @@ export const App: React.FC = () => {
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribePolicies) unsubscribePolicies();
     };
-  }, [settings.firebase]);
+  }, [settings.firebase, adminSessionActive]);
 
   // Update URL Hash without reload
   const updateHash = (newHash: string) => {
@@ -484,19 +489,10 @@ export const App: React.FC = () => {
         throw new Error('لم يتم تهيئة إعدادات Firebase بعد. يرجى إدخال مفاتيح المشروع في الإعدادات.');
       }
 
-      const user = await fb.loginWithGoogle(auth);
-      if (user?.email) {
-        const role = await fb.getAdminRole(db, user.email);
-        if (role) {
-          adminModeRef.current = true;
-          localStorage.setItem('mih_admin_hint', '1');
-          fb.subscribeToPolicies(db, (remoteList) => {
-            if (adminModeRef.current && remoteList.length > 0) {
-              setPolicies(remoteList);
-            }
-          });
-        }
-      }
+      await fb.loginWithGoogle(auth);
+      // تفعيل جلسة المدير: يعيد تشغيل تأثير الاشتراك فيتحقق من الدور ويشترك بـ Firestore ويحدّث الحالة
+      localStorage.setItem('mih_admin_hint', '1');
+      setAdminSessionActive(true);
     } catch (err: any) {
       console.error('Login error:', err);
       throw err;
@@ -516,6 +512,7 @@ export const App: React.FC = () => {
       console.warn('Logout error:', e);
     }
     localStorage.removeItem('mih_admin_hint');
+    setAdminSessionActive(false);
     adminModeRef.current = false;
     setCurrentUser(null);
     setAdminRole(null);
@@ -775,11 +772,7 @@ export const App: React.FC = () => {
         activeReadingPolicy={activeDocPolicy}
         onBackFromReading={() => setActiveDocPolicy(null)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode((prev) => !prev)}
         lang={lang}
-        onToggleLanguage={toggleLanguage}
-        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Body Container: Permanent Full-Height Sidebar + Centered Main Content */}
