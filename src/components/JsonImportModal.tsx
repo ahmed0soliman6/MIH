@@ -43,20 +43,33 @@ export const JsonImportModal: React.FC<JsonImportModalProps> = ({
     setErrorMsg('');
     setParsedPolicies([]);
 
-    if (!rawText.trim()) return;
+    const cleanInput = (rawText || '').replace(/^\uFEFF/, '').trim();
+    if (!cleanInput) return;
 
     try {
-      let data = JSON.parse(rawText.trim());
-      if (!Array.isArray(data)) {
-        data = [data];
+      let parsed = JSON.parse(cleanInput);
+      let list: any[] = [];
+
+      if (Array.isArray(parsed)) {
+        list = parsed;
+      } else if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.policies)) {
+          list = parsed.policies;
+        } else if (Array.isArray(parsed.data)) {
+          list = parsed.data;
+        } else if (Array.isArray(parsed.items)) {
+          list = parsed.items;
+        } else {
+          list = [parsed];
+        }
       }
 
-      if (data.length === 0) {
-        setErrorMsg('المصفوفة المدخلة فارغة.');
+      if (list.length === 0) {
+        setErrorMsg('لم يتم العثور على أي سياسات صالحة في الملف المدخل.');
         return;
       }
 
-      const normalized: Policy[] = data.map((item: any, idx: number) => {
+      const normalized: Policy[] = list.map((item: any, idx: number) => {
         const title = item.title || item.policy_title || `سياسة مستوردة ${idx + 1}`;
         const code = item.code || item.policy_code || `MIH-IMP-${Date.now()}-${idx + 1}`;
         const category = normalizeCategory(item.category || item.category_key || 'IPC');

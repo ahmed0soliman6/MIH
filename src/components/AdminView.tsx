@@ -1,18 +1,78 @@
 import React, { useState, useEffect } from 'react';
-import { Policy, Slide, CategoryKey, SystemSettings } from '../types';
-import { CATEGORY_META } from '../data/initialData';
+import { Policy, Slide, CategoryKey, SystemSettings, AdminRole, AdminEntry } from '../types';
+import { sanitizeHtml, htmlToText } from '../utils/sanitize';
+import { CATEGORY_META } from '../data/meta';
 import {
   parseWordDocument,
   parsePptxDocument,
   inspectPdfDocument,
   extractPdfTextLocally,
   processPdfWithGemini,
+  parseImageDocument,
   uploadToCloudinary,
   getArabicCurrentMonthYear,
-  generateSlidesFromHtml
+  generateSlidesFromHtml,
+  escapeHtml
 } from '../services/aiAndParsers';
 import { PDFDocument } from 'pdf-lib';
 import { JsonImportModal } from './JsonImportModal';
+
+// Converts plain formatted Arabic text into structured semantic HTML
+export function convertPlainTextToHtml(text: string): string {
+  if (!text || !text.trim()) return '';
+  const lines = text.split('\n');
+  let html = '<div class="policy-doc space-y-4">';
+  let inList = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      continue;
+    }
+
+    if (line.startsWith('#') || line.startsWith('عنوان:') || line.match(/^[0-9]+[.-]\s/)) {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      const titleText = line.replace(/^[#0-9.-]+\s*/, '').replace(/^عنوان:\s*/, '');
+      html += `<h3>${escapeHtml(titleText)}</h3>`;
+    } else if (line.startsWith('-') || line.startsWith('*') || line.startsWith('•')) {
+      if (!inList) {
+        html += '<ul>';
+        inList = true;
+      }
+      const bulletText = line.replace(/^[-*•]\s*/, '');
+      html += `<li>${escapeHtml(bulletText)}</li>`;
+    } else if (line.startsWith('تنبيه:') || line.startsWith('ملاحظة:') || line.startsWith('هام:')) {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      html += `<blockquote>${escapeHtml(line)}</blockquote>`;
+    } else {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      html += `<p>${escapeHtml(line)}</p>`;
+    }
+  }
+
+  if (inList) {
+    html += '</ul>';
+  }
+  html += '</div>';
+  return html;
+}
+
+export function stripHtmlTags(html: string): string {
+  return htmlToText(html);
+}
 
 interface AdminViewProps {
   policies?: Policy[];
@@ -27,6 +87,11 @@ interface AdminViewProps {
   onUpdateSettings: (settings: SystemSettings) => void;
   onSeedFirestore?: () => Promise<void>;
   onImportPolicies?: (imported: Policy[]) => Promise<void>;
+  adminRole?: AdminRole | null;
+  adminList?: AdminEntry[];
+  currentUserEmail?: string;
+  onAddAdmin?: (email: string, role: AdminRole) => Promise<void>;
+  onRemoveAdmin?: (email: string) => Promise<void>;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -42,6 +107,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onUpdateSettings,
   onSeedFirestore,
   onImportPolicies,
+  adminRole = null,
+  adminList = [],
+  currentUserEmail = '',
+  onAddAdmin,
+  onRemoveAdmin,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
@@ -51,10 +121,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [category, setCategory] = useState<CategoryKey>('QPI');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategoryName, setCustomCategoryName] = useState('');
   const [dept, setDept] = useState('');
   const [version, setVersion] = useState('الإصدار 1.0');
   const [date, setDate] = useState(getArabicCurrentMonthYear());
   const [purpose, setPurpose] = useState('');
+  
+  // Content input mode: manual plain text vs raw HTML
+  const [contentInputMode, setContentInputMode] = useState<'text' | 'html'>('text');
+  const [manualPlainText, setManualPlainText] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [slides, setSlides] = useState<Slide[]>([]);
   const [images, setImages] = useState<string[]>([]);
@@ -69,59 +145,57 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [pdfStartPage, setPdfStartPage] = useState<number>(1);
   const [pdfEndPage, setPdfEndPage] = useState<number>(5);
 
-  // Admin Whitelist management state
+  // إدارة المديرين (superadmin فقط؛ تُفرض فعلياً بقواعد Firestore)
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminRole, setNewAdminRole] = useState<AdminRole>('editor');
+  const isSuperAdmin = adminRole === 'superadmin';
+  const canSeeAdmins = adminRole === 'admin' || adminRole === 'superadmin';
 
   const handleAddAdminEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    let clean = newAdminEmail.trim().toLowerCase();
+    const clean = newAdminEmail.trim().toLowerCase();
     if (!clean) return;
-
-    // If username entered without @, auto-append @gmail.com
-    if (!clean.includes('@')) {
-      clean = `${clean}@gmail.com`;
-    }
-
-    if (!clean.includes('.') || clean.length < 5) {
-      onShowToast('يرجى إدخال بريد إلكتروني صالح');
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(clean)) {
+      onShowToast('يرجى إدخال بريد إلكتروني كامل وصالح (مثال: name@gmail.com)');
       return;
     }
-
-    const currentList = settings.adminEmails || [];
-    if (currentList.some((em) => em.trim().toLowerCase() === clean)) {
+    if (adminList.some((a) => a.email === clean)) {
       onShowToast('هذا البريد مسجل بالفعل في قائمة المديرين');
       return;
     }
-
-    const updated = [...currentList, clean];
+    if (!onAddAdmin) return;
+    await onAddAdmin(clean, newAdminRole);
     setNewAdminEmail('');
-    await onUpdateSettings({ ...settings, adminEmails: updated });
-    onShowToast(`تم اعتماد البريد (${clean})! تم حفظه في فايرستور تلقائياً ويستطيع الدخول فوراً عبر Google 👑`);
   };
 
-  const handleRemoveAdminEmail = (emailToRemove: string) => {
-    const currentList = settings.adminEmails || [];
-    if (currentList.length <= 1) {
-      alert('يجب الإبقاء على بريد إداري واحد على الأقل في القائمة.');
+  const handleRemoveAdminEmail = async (emailToRemove: string) => {
+    if (!onRemoveAdmin) return;
+    if (emailToRemove === currentUserEmail.trim().toLowerCase()) {
+      alert('لا يمكنك إزالة حسابك الحالي.');
       return;
     }
-    if (!confirm(`هل أنت متأكد من رغبتك في إزالة البريد (${emailToRemove}) من قائمة مديري الجودة المعتمدين؟`)) {
-      return;
-    }
-    const updated = currentList.filter((em) => em.trim().toLowerCase() !== emailToRemove.trim().toLowerCase());
-    onUpdateSettings({ ...settings, adminEmails: updated });
-    onShowToast(`تمت إزالة البريد (${emailToRemove}) من قائمة المديرين.`);
+    if (!confirm(`هل أنت متأكد من رغبتك في إزالة (${emailToRemove}) من مديري الجودة؟`)) return;
+    await onRemoveAdmin(emailToRemove);
   };
 
   const loadPolicy = (p: Policy) => {
     setTitle(p.title || '');
     setCode(p.code || '');
-    setCategory(p.category || 'QPI');
+    if (CATEGORY_META[p.category as CategoryKey]) {
+      setCategory(p.category as CategoryKey);
+      setIsCustomCategory(false);
+      setCustomCategoryName('');
+    } else {
+      setCategory('QPI');
+      setIsCustomCategory(true);
+      setCustomCategoryName(p.category || '');
+    }
     setDept(p.dept || '');
     setVersion(p.version || 'الإصدار 1.0');
     setDate(p.date || getArabicCurrentMonthYear());
     setPurpose(p.purpose || '');
     setContentHtml(p.content_html || '');
+    setManualPlainText(p.plain_text || stripHtmlTags(p.content_html || ''));
     setSlides(p.slides ? JSON.parse(JSON.stringify(p.slides)) : []);
     setImages(p.images ? [...p.images] : []);
   };
@@ -157,16 +231,70 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setTitle('');
     setCode('');
     setCategory('QPI');
+    setIsCustomCategory(false);
+    setCustomCategoryName('');
     setDept('');
     setVersion('الإصدار 1.0');
     setDate(getArabicCurrentMonthYear());
     setPurpose('');
     setContentHtml('');
+    setManualPlainText('');
+    setContentInputMode('text');
     setSlides([]);
     setImages([]);
     setPdfFile(null);
     setRawPdfFile(null);
     setSelectedPolicyId('new');
+  };
+
+  // Image File Handler (.png, .jpg, .jpeg, .webp) -> Auto extract to policy with slides
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    onShowLoading(true, 'جاري معالجة واستخراج الصورة وتحويلها لمخطط وسياسة وشرائح تفاعلية...');
+    try {
+      const parsed = await parseImageDocument(file, true);
+      setTitle(parsed.title);
+      setCode(parsed.code);
+      setCategory(parsed.category);
+      setDept(parsed.dept);
+      setVersion(parsed.version);
+      setDate(parsed.date);
+      setPurpose(parsed.purpose);
+      setContentHtml(parsed.content_html);
+      setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
+      setSlides(parsed.slides);
+      setImages(parsed.images);
+
+      onShowLoading(false);
+      onShowToast(`🎉 تم بنجاح استخراج محتوى الصورة وإدراجها بالوثيقة وبناء شرائح العرض!`);
+      setEditorTab('preview-doc');
+    } catch (err: any) {
+      onShowLoading(false);
+      console.error(err);
+      alert('حدث خطأ أثناء معالجة الصورة: ' + (err.message || err));
+    }
+    e.target.value = '';
+  };
+
+  // Universal Auto-detect File Uploader (Word, PDF, PPTX, or Image)
+  const handleUniversalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+      await handleWordUpload(e);
+    } else if (fileName.endsWith('.pptx') || fileName.endsWith('.ppt')) {
+      await handlePptxUpload(e);
+    } else if (fileName.endsWith('.pdf')) {
+      await handlePdfUpload(e);
+    } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(fileName)) {
+      await handleImageUpload(e);
+    } else {
+      alert('صيغة الملف غير مدعومة. يرجى اختيار ملف Word (.docx) أو PDF أو PowerPoint (.pptx) أو صورة (.png/.jpg).');
+    }
   };
 
   // Word File Handler (.docx / .doc)
@@ -270,6 +398,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setPurpose(parsed.purpose);
       setContentHtml(parsed.content_html);
       setSlides(parsed.slides);
+      if (parsed.images && parsed.images.length > 0) {
+        setImages(parsed.images);
+      }
+      setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
 
       onShowLoading(false);
       onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API!`);
@@ -285,17 +417,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleProcessPdfWithGemini = async () => {
     if (!pdfFile) return;
 
-    let apiKey = settings.geminiKey;
-    if (!apiKey) {
-      const enteredKey = prompt('أدخل مفتاح Gemini API الخاص بك للمتابعة:\n(يمكنك الحصول عليه مجاناً من Google AI Studio)', '');
-      if (!enteredKey) return;
-      apiKey = enteredKey.trim();
-      onUpdateSettings({ ...settings, geminiKey: apiKey });
-    }
-
     onShowLoading(true, `جاري استخراج الصفحات من (${pdfStartPage}) إلى (${pdfEndPage}) وتحليلها بنموذج Gemini Flash AI فائق السرعة والدقة...`);
     try {
-      const res = await processPdfWithGemini(pdfFile.doc, pdfStartPage, pdfEndPage, apiKey);
+      const res = await processPdfWithGemini(pdfFile.doc, pdfStartPage, pdfEndPage);
       setTitle(res.title);
       setCode(res.code);
       setCategory(res.category);
@@ -304,6 +428,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setDate(getArabicCurrentMonthYear());
       setPurpose(res.purpose);
       setContentHtml(res.content_html);
+      setManualPlainText(stripHtmlTags(res.content_html));
       setSlides(res.slides && res.slides.length > 0 ? res.slides : generateSlidesFromHtml(res.content_html, res.title));
 
       onShowLoading(false);
@@ -414,30 +539,41 @@ export const AdminView: React.FC<AdminViewProps> = ({
   // Submit Policy Form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !code.trim() || !purpose.trim() || !contentHtml.trim()) {
+
+    let finalHtml = contentHtml.trim();
+    if (contentInputMode === 'text') {
+      if (!manualPlainText.trim()) {
+        alert('يرجى كتابة محتوى السياسة في الصندوق.');
+        return;
+      }
+      finalHtml = convertPlainTextToHtml(manualPlainText);
+    }
+
+    if (!title.trim() || !code.trim() || !purpose.trim() || !finalHtml) {
       alert('يرجى ملء كافة الحقول الإلزامية: العنوان، الكود، الهدف، ومحتوى الوثيقة.');
       return;
     }
 
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = contentHtml;
-    const plainText = `${title} ${code} ${dept} ${purpose} ${tempDiv.textContent || ''}`.replace(/\s+/g, ' ').trim();
+    const finalCategory = (isCustomCategory && customCategoryName.trim() ? customCategoryName.trim() : category) as CategoryKey;
+
+    finalHtml = sanitizeHtml(finalHtml);
+    const plainText = `${title} ${code} ${dept} ${purpose} ${htmlToText(finalHtml)}`.replace(/\s+/g, ' ').trim();
 
     let finalSlides = slides;
     if (finalSlides.length === 0) {
-      finalSlides = generateSlidesFromHtml(contentHtml, title);
+      finalSlides = generateSlidesFromHtml(finalHtml, title);
     }
 
     const policyToSave: Policy = {
       id: editingPolicy?.id || (selectedPolicyId && selectedPolicyId !== 'new' ? selectedPolicyId : `pol-${Date.now()}`),
       title: title.trim(),
       code: code.trim(),
-      category,
+      category: finalCategory,
       dept: dept.trim() || 'جميع الأقسام المعنية',
       version: version.trim() || 'الإصدار 1.0',
       date: date.trim() || getArabicCurrentMonthYear(),
       purpose: purpose.trim(),
-      content_html: contentHtml.trim(),
+      content_html: finalHtml,
       plain_text: plainText,
       slides: finalSlides,
       images,
@@ -519,93 +655,129 @@ export const AdminView: React.FC<AdminViewProps> = ({
       </div>
 
       {/* Card 0: Admin Whitelist Management (User Requested Feature) */}
-      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <span>👥</span>
-              <span>إدارة قائمة مديري الجودة المعتمدين (Google Login Whitelist)</span>
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
-              أي بريد إلكتروني يُضاف هنا، يستطيع صاحبه الضغط على زر <em>«دخول الإدارة (Google)»</em> والدخول فوراً كمدير معتمد بصلاحيات كاملة
-            </p>
+      {canSeeAdmins && (
+        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span>👥</span>
+                <span>إدارة مديري الجودة والأدوار</span>
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                الأدوار: <b>editor</b> يحرر السياسات — <b>admin</b> يحذف ويرى القائمة — <b>superadmin</b> يدير المديرين. الصلاحيات تُفرض في قواعد Firestore وليس في الواجهة.
+              </p>
+            </div>
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
+              {adminList.length} مديرين
+            </span>
           </div>
-          <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
-            {settings.adminEmails?.length || 0} مديرين معتمدين
-          </span>
-        </div>
 
-        {/* Add Email Form */}
-        <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            inputMode="email"
-            autoCapitalize="none"
-            autoCorrect="off"
-            value={newAdminEmail}
-            onChange={(e) => setNewAdminEmail(e.target.value)}
-            placeholder="أدخل بريد المدير أو اسم المستخدم (مثال: doctor@gmail.com أو dina3)..."
-            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
-          />
-          <button
-            type="submit"
-            className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
-          >
-            <span>➕</span>
-            <span>اعتماد مدير جديد وحفظه في فايرستور</span>
-          </button>
-        </form>
-        <p className="text-[11px] text-teal-700 dark:text-teal-400 font-medium flex items-center gap-1.5">
-          <span>⚡</span>
-          <span>يتم الحفظ تلقائياً في سحابة فايرستور (Firestore) ومزامنة الصلاحيات فوراً مع جميع الأجهزة والهواتف دون الحاجة لأي تعديل يدوي للقواعد.</span>
-        </p>
+          {isSuperAdmin ? (
+            <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                dir="ltr"
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                placeholder="name@gmail.com"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+              />
+              <select
+                value={newAdminRole}
+                onChange={(e) => setNewAdminRole(e.target.value as AdminRole)}
+                className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white outline-none"
+              >
+                <option value="editor">editor (محرر)</option>
+                <option value="admin">admin (مدير)</option>
+                <option value="superadmin">superadmin (مدير عام)</option>
+              </select>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+              >
+                <span>➕</span>
+                <span>اعتماد مدير</span>
+              </button>
+            </form>
+          ) : (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+              إدارة المديرين (إضافة/حذف) متاحة لدور superadmin فقط.
+            </p>
+          )}
 
-        {/* Whitelist Chips Grid */}
-        <div className="space-y-2 pt-1">
-          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            الإيميلات المعتمدة حالياً لدخول الإدارة:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(settings.adminEmails || []).map((email) => (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {adminList.map((a) => (
               <div
-                key={email}
+                key={a.email}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200"
               >
-                <span>👑</span>
-                <span className="font-mono">{email}</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveAdminEmail(email)}
-                  className="text-slate-400 hover:text-red-500 font-bold p-0.5 rounded transition cursor-pointer"
-                  title="إزالة هذا البريد من الإدارة"
-                >
-                  ✕
-                </button>
+                <span>{a.role === 'superadmin' ? '👑' : a.role === 'admin' ? '🛡️' : '✏️'}</span>
+                <span className="font-mono" dir="ltr">{a.email}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">{a.role}</span>
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAdminEmail(a.email)}
+                    className="text-slate-400 hover:text-red-500 font-bold p-0.5 rounded transition cursor-pointer"
+                    title="إزالة هذا المدير"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Card 1: Smart AI Upload Engine */}
       <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
         <div>
-          <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+          <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
             <span>🚀</span>
             <span>محرك الرفع والتحويل الذكي (Smart AI Converter)</span>
           </h3>
-          <p className="text-xs text-slate-500 font-semibold">
-            اختر ملف Word أو PDF أو صورة لاستخراج محتواها وتحويلها لسياسة وشرائح تلقائياً
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+            اختر ملف Word أو PDF أو عرض PowerPoint أو صورة لاستخراج محتواها وتحويلها لسياسة وشرائح تلقائياً
           </p>
+        </div>
+
+        {/* Universal Fast Converter Banner */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-teal-900 via-slate-900 to-indigo-950 text-white border border-teal-500/40 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-3xl p-2 rounded-2xl bg-teal-500/20 border border-teal-500/30 shrink-0">🎯</span>
+            <div className="min-w-0">
+              <h4 className="text-sm sm:text-base font-black text-white">
+                المحول الشامل التلقائي (Word / PDF / PowerPoint / صور)
+              </h4>
+              <p className="text-xs text-slate-300 font-semibold mt-0.5">
+                اختر أي ملف بصيغة Word (.docx) أو PDF أو PowerPoint (.pptx) أو صورة (.png/.jpg) وسيقوم النظام فوراً باستخراج محتواه وبناء الشرائح
+              </p>
+            </div>
+          </div>
+          <div>
+            <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white font-black text-xs sm:text-sm transition shadow-md whitespace-nowrap active:scale-95 shrink-0">
+              <span>⚡ اختر أي ملف للتحويل الفوري</span>
+              <input
+                type="file"
+                accept=".docx,.doc,.pptx,.ppt,.pdf,image/*,.png,.jpg,.jpeg,.webp"
+                onChange={handleUniversalUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* 1. Word Upload */}
-          <div className="p-5 rounded-2xl bg-teal-50/50 border border-teal-200 text-center space-y-3 flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📄</span>
-              <h4 className="font-extrabold text-teal-950 text-sm">ملفات Word (.docx)</h4>
-              <p className="text-xs text-teal-800 leading-relaxed font-semibold">
+              <h4 className="font-extrabold text-teal-950 dark:text-teal-200 text-sm">ملفات Word (.docx)</h4>
+              <p className="text-xs text-teal-800 dark:text-teal-300 leading-relaxed font-semibold">
                 استخراج فوري في المتصفح للجداول والفقرات وبناء الشرائح تلقائياً.
               </p>
             </div>
@@ -618,11 +790,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
 
           {/* 2. PowerPoint Upload */}
-          <div className="p-5 rounded-2xl bg-indigo-50/50 border border-indigo-200 text-center space-y-3 flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📽️</span>
-              <h4 className="font-extrabold text-indigo-950 text-sm">عروض PowerPoint (.pptx)</h4>
-              <p className="text-xs text-indigo-800 leading-relaxed font-semibold">
+              <h4 className="font-extrabold text-indigo-950 dark:text-indigo-200 text-sm">عروض PowerPoint (.pptx)</h4>
+              <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed font-semibold">
                 قراءة واستخراج كافة الشرائح والنقاط والعناوين محلياً في ثوانٍ.
               </p>
             </div>
@@ -635,11 +807,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
 
           {/* 3. PDF Upload */}
-          <div className="p-5 rounded-2xl bg-red-50/50 border border-red-200 text-center space-y-3 flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-red-50/50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">📑</span>
-              <h4 className="font-extrabold text-red-950 text-sm">ملفات PDF (محلي + AI)</h4>
-              <p className="text-xs text-red-800 leading-relaxed font-semibold">
+              <h4 className="font-extrabold text-red-950 dark:text-red-200 text-sm">ملفات PDF (محلي + AI)</h4>
+              <p className="text-xs text-red-800 dark:text-red-300 leading-relaxed font-semibold">
                 استخراج محلي فوري أو معالجة ذكية بـ Gemini مع تحديد نطاق الصفحات.
               </p>
             </div>
@@ -651,19 +823,19 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
-          {/* 4. Cloudinary Upload */}
-          <div className="p-5 rounded-2xl bg-purple-50/50 border border-purple-200 text-center space-y-3 flex flex-col justify-between">
+          {/* 4. Image Upload & Parser (No Cloudinary required) */}
+          <div className="p-5 rounded-2xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-center space-y-3 flex flex-col justify-between">
             <div className="space-y-2">
               <span className="text-3xl">🖼️</span>
-              <h4 className="font-extrabold text-purple-950 text-sm">صور ومخططات (Cloudinary)</h4>
-              <p className="text-xs text-purple-800 leading-relaxed font-semibold">
-                رفع فوري بدون خادم مع ضغط Canvas WebP وإدراج الرابط مباشرة بالسياسة.
+              <h4 className="font-extrabold text-purple-950 dark:text-purple-200 text-sm">صور ومخططات (.png/.jpg)</h4>
+              <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed font-semibold">
+                تحويل الصورة فوراً لوثيقة سياسة وإدراجها كمخطط معتمد وبناء الشرائح.
               </p>
             </div>
             <div>
               <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-purple-800 hover:bg-purple-900 text-white font-bold text-xs transition shadow-sm">
-                <span>إرفاق صورة / مخطط</span>
-                <input type="file" accept="image/*" onChange={handleCloudinaryUpload} className="hidden" />
+                <span>اختيار صورة / مخطط</span>
+                <input type="file" accept="image/*,.png,.jpg,.jpeg,.webp" onChange={handleImageUpload} className="hidden" />
               </label>
             </div>
           </div>
@@ -895,8 +1067,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   القسم / التصنيف *
                 </label>
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as CategoryKey)}
+                  value={isCustomCategory ? 'CUSTOM' : category}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'CUSTOM') {
+                      setIsCustomCategory(true);
+                    } else {
+                      setIsCustomCategory(false);
+                      setCategory(val as CategoryKey);
+                    }
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none cursor-pointer"
                 >
                   {(Object.keys(CATEGORY_META) as CategoryKey[]).map((k) => (
@@ -904,7 +1084,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       {CATEGORY_META[k].name}
                     </option>
                   ))}
+                  <option value="CUSTOM">➕ إضافة قسم / تصنيف مخصص جديد...</option>
                 </select>
+
+                {isCustomCategory && (
+                  <div className="mt-2 space-y-1">
+                    <input
+                      type="text"
+                      required
+                      value={customCategoryName}
+                      onChange={(e) => setCustomCategoryName(e.target.value)}
+                      placeholder="أدخل رمز أو اسم القسم الجديد (مثال: LAB - المختبرات الطبية)..."
+                      className="w-full px-3 py-2 rounded-xl border border-teal-500 bg-teal-50/70 dark:bg-slate-800 text-xs font-bold text-teal-900 dark:text-teal-200 focus:ring-2 focus:ring-teal-600 outline-none placeholder:text-slate-400"
+                    />
+                    <p className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">
+                      سيتم حفظ هذا القسم الجديد وربطه بالسياسة مباشرة.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="lg:col-span-2">
@@ -963,24 +1160,121 @@ export const AdminView: React.FC<AdminViewProps> = ({
               ></textarea>
             </div>
 
-            {/* Rich HTML Content */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  محتوى السياسة الكامل (HTML Rich Content) *
-                </label>
-                <span className="text-[11px] text-slate-400">
-                  يدعم العناوين h3، الفقرات p، الجداول table، والقوائم ul/ol
-                </span>
+            {/* Policy Content with Mode Switcher (Manual Plain Text vs HTML) */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <div>
+                  <label className="block text-xs font-black text-slate-900 dark:text-white">
+                    محتوى السياسة الكامل *
+                  </label>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
+                    {contentInputMode === 'text'
+                      ? 'اكتب المحتوى كنص عادي وسيقوم النظام بتنسيقه تلقائياً كفقرات ونقاط وقوائم معتمدة'
+                      : 'محرر HTML المتقدم (يدعم العناوين h3، الفقرات p، والجداول table)'}
+                  </span>
+                </div>
+
+                {/* Mode Switch Buttons */}
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (contentInputMode !== 'text') {
+                        if (!manualPlainText && contentHtml) {
+                          setManualPlainText(stripHtmlTags(contentHtml));
+                        }
+                        setContentInputMode('text');
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      contentInputMode === 'text'
+                        ? 'bg-teal-700 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>📝</span>
+                    <span>إدخال يدوي (نص عادي)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (contentInputMode !== 'html') {
+                        if (manualPlainText && !contentHtml) {
+                          setContentHtml(convertPlainTextToHtml(manualPlainText));
+                        }
+                        setContentInputMode('html');
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      contentInputMode === 'html'
+                        ? 'bg-teal-700 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>💻</span>
+                    <span>محرر HTML</span>
+                  </button>
+                </div>
               </div>
-              <textarea
-                rows={8}
-                required
-                value={contentHtml}
-                onChange={(e) => setContentHtml(e.target.value)}
-                placeholder="اكتب أو الصق نص السياسة المنسق بـ HTML هنا (أو استخدم الرفع التلقائي لملفات Word/PDF)..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
-              ></textarea>
+
+              {contentInputMode === 'text' ? (
+                <div className="space-y-2">
+                  {/* Quick Insert Toolbar */}
+                  <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
+                    <span className="font-bold text-slate-500 dark:text-slate-400 text-[11px] ml-1">إضافة سريعة:</span>
+                    <button
+                      type="button"
+                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n\n### عنوان الإجراء الفرعي:\n' : '### عنوان الإجراء الفرعي:\n'))}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
+                    >
+                      ➕ عنوان رئيسي
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n- خطوة إجرائية:\n' : '- خطوة إجرائية:\n'))}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
+                    >
+                      ➕ نقطة في قائمة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n- المسؤوليات: الأطباء والتمريض وفريق الجودة المعني.\n' : '- المسؤوليات: الأطباء والتمريض وفريق الجودة المعني.\n'))}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
+                    >
+                      ➕ المسؤوليات
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\nتنبيه: يجب مراعاة سلامة المريض والتوثيق الفوري بالسجلات الطبية.\n' : 'تنبيه: يجب مراعاة سلامة المريض والتوثيق الفوري بالسجلات الطبية.\n'))}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-amber-800 dark:text-amber-300 font-bold text-[11px] cursor-pointer shadow-2xs"
+                    >
+                      ⚠️ تنبيه هام
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={9}
+                    required
+                    value={manualPlainText}
+                    onChange={(e) => {
+                      setManualPlainText(e.target.value);
+                      setContentHtml(convertPlainTextToHtml(e.target.value));
+                    }}
+                    placeholder={`اكتب محتوى السياسة وإجراءاتها هنا بسهولة بدون كود HTML...\nمثال:\n### 1. الإجراءات المتبعة\n- فحص العلامات الحيوية للمريض فور الدخول\n- تطبيق العزل الوقائي عند الاشتباه\n\n### 2. المسؤوليات\n- التمريض: تنفيذ خطة الرعاية والتوثيق\n- الطبيب المعالج: مراجعة خطة العلاج`}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none leading-relaxed custom-scroll"
+                  ></textarea>
+                </div>
+              ) : (
+                <textarea
+                  rows={8}
+                  required
+                  value={contentHtml}
+                  onChange={(e) => setContentHtml(e.target.value)}
+                  placeholder="اكتب أو الصق نص السياسة المنسق بـ HTML هنا (أو استخدم الرفع التلقائي لملفات Word/PDF)..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
+                ></textarea>
+              )}
             </div>
 
             {/* Slides Builder */}
@@ -1152,7 +1446,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <div
               className="policy-content-html border-t border-slate-100 pt-4"
               dangerouslySetInnerHTML={{
-                __html: contentHtml || '<p class="text-slate-400 italic">لا يوجد محتوى HTML مكتوب حتى الآن...</p>'
+                __html: sanitizeHtml(contentHtml) || '<p class="text-slate-400 italic">لا يوجد محتوى HTML مكتوب حتى الآن...</p>'
               }}
             ></div>
           </div>

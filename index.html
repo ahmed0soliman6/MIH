@@ -9,7 +9,8 @@
   <meta property="og:title" content="بوابة إدارة وعرض سياسات الجودة | مستشفى المنصورة الدولي (MIH)" />
   <meta property="og:description" content="نظام ويب لإدارة وعرض سياسات الجودة وحزم الرعاية الإكلينيكية بمستشفى المنصورة الدولي (MIH) مع عارض شرائح تفاعلي ومحرك تحويل ذكي" />
   <meta property="og:type" content="website" />
-  <link rel="icon" type="image/jpeg" href="/assets/logo.jpg" />
+  <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
   <!-- PWA Manifest & Mobile Web App Meta -->
   <link rel="manifest" href="/manifest.json" />
@@ -22,18 +23,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <!-- html2pdf for Direct Client-side PDF Generation -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-teal-500 selection:text-white">
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => console.log('SW register note:', err));
-      });
-    }
-  </script>
 </body>
 </html>

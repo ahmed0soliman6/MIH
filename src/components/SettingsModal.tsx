@@ -17,8 +17,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [apiKey, setApiKey] = useState('');
   const [projectId, setProjectId] = useState('');
   const [authDomain, setAuthDomain] = useState('');
-  const [adminEmailsText, setAdminEmailsText] = useState('');
-  const [geminiKey, setGeminiKey] = useState('');
   const [cloudinaryName, setCloudinaryName] = useState('');
   const [cloudinaryPreset, setCloudinaryPreset] = useState('');
 
@@ -27,8 +25,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setApiKey(settings.firebase?.apiKey || '');
       setProjectId(settings.firebase?.projectId || '');
       setAuthDomain(settings.firebase?.authDomain || '');
-      setAdminEmailsText((settings.adminEmails || []).join('\n'));
-      setGeminiKey(settings.geminiKey || '');
       setCloudinaryName(settings.cloudinaryName || '');
       setCloudinaryPreset(settings.cloudinaryPreset || '');
     }
@@ -37,19 +33,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   if (!isOpen) return null;
 
   const handleSave = () => {
-    const emails = adminEmailsText
-      .split('\n')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-
     const updated: SystemSettings = {
       firebase: {
         apiKey: apiKey.trim(),
         projectId: projectId.trim(),
         authDomain: authDomain.trim() || (projectId.trim() ? `${projectId.trim()}.firebaseapp.com` : '')
       },
-      adminEmails: emails.length > 0 ? emails : settings.adminEmails,
-      geminiKey: geminiKey.trim(),
       cloudinaryName: cloudinaryName.trim(),
       cloudinaryPreset: cloudinaryPreset.trim()
     };
@@ -123,38 +112,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Admin Whitelist */}
-          <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 space-y-2">
-            <h4 className="font-extrabold text-red-950 dark:text-red-300 text-sm flex items-center gap-1.5">
-              <span>👑</span>
-              <span>القائمة البيضاء لإيميلات الإدارة (Admin Whitelist)</span>
+          {/* ملاحظة أمنية: المديرون ومفتاح Gemini لم يعودا يُدارَان من هنا */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+            <h4 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-1.5">
+              <span>🔒</span>
+              <span>المديرون ومفتاح Gemini</span>
             </h4>
-            <p className="text-slate-600 dark:text-slate-300">
-              أدخل إيميلات Google للمديرين المسموح لهم بإدارة السياسات (إيميل في كل سطر):
+            <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed">
+              تُدار صلاحيات المديرين من لوحة الإدارة (للـ superadmin) وتُفرض عبر قواعد Firestore. مفتاح Gemini محفوظ على الخادم فقط
+              (متغير GEMINI_API_KEY في Vercel) ولا يُدخل من المتصفح.
             </p>
-            <textarea
-              rows={2}
-              value={adminEmailsText}
-              onChange={(e) => setAdminEmailsText(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-red-300 dark:border-red-900 bg-white dark:bg-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-red-600 custom-scroll"
-            ></textarea>
-          </div>
-
-          {/* Gemini API Key */}
-          <div className="p-4 rounded-2xl bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900/40 space-y-2">
-            <h4 className="font-extrabold text-teal-950 dark:text-teal-300 text-sm flex items-center gap-1.5">
-              <span>✨</span>
-              <span>مفتاح Gemini API (للتحويل الذكي)</span>
-            </h4>
-            <p className="text-slate-600 dark:text-slate-300">يُستخدم لاستخراج النصوص وبناء الشرائح تلقائياً من ملفات PDF:</p>
-            <input
-              type="password"
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="AIzaSy..."
-              className="w-full px-3 py-2 rounded-xl border border-teal-300 dark:border-teal-900 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs outline-none focus:ring-2 focus:ring-teal-600"
-            />
-            <p className="text-[11px] text-teal-700 dark:text-teal-400">يمكنك الحصول على مفتاح مجاني فوري من Google AI Studio.</p>
           </div>
 
           {/* Cloudinary Settings */}

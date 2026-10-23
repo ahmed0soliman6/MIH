@@ -18,7 +18,7 @@ export interface Policy {
   id: string;
   code: string;
   title: string;
-  category: CategoryKey;
+  category: CategoryKey | string;
   dept: string;
   version: string;
   date?: string;
@@ -58,10 +58,16 @@ export interface SystemSettings {
     projectId: string;
     authDomain?: string;
   };
-  adminEmails: string[];
-  geminiKey?: string;
   cloudinaryName?: string;
   cloudinaryPreset?: string;
+}
+
+export type AdminRole = 'editor' | 'admin' | 'superadmin';
+
+export interface AdminEntry {
+  email: string;
+  role: AdminRole;
+  name?: string;
 }
 
 export interface AuthUser {

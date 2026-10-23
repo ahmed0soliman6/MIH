@@ -21,13 +21,16 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setCurrentSlideIndex(0);
-      document.body.classList.add('overflow-hidden');
-    } else {
-      document.body.classList.remove('overflow-hidden');
+      const prevOverflow = document.body.style.overflow;
+      const prevTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+
+      return () => {
+        document.body.style.overflow = prevOverflow;
+        document.body.style.touchAction = prevTouchAction;
+      };
     }
-    return () => {
-      document.body.classList.remove('overflow-hidden');
-    };
   }, [isOpen]);
 
   // Keyboard navigation
@@ -130,8 +133,13 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm transition cursor-pointer"
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              onClose();
+            }}
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-red-700 active:bg-red-800 text-white flex items-center justify-center font-bold text-base transition cursor-pointer border border-slate-700 active:scale-95 shadow-md"
             title="خروج (Esc)"
+            aria-label="إغلاق العرض"
           >
             ✕
           </button>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Policy, Bundle, CategoryKey } from '../types';
-import { CATEGORY_META, isManualPolicy } from '../data/initialData';
+import { CATEGORY_META, isManualPolicy } from '../data/meta';
 import { TabType } from './Navbar';
 
 interface HomeViewProps {
@@ -13,6 +13,8 @@ interface HomeViewProps {
   onOpenDocument: (policy: Policy) => void;
   onOpenPresentation: (policy: Policy) => void;
   onQuickAddPolicy: () => void;
+  bookmarkedIds?: string[];
+  onToggleBookmark?: (policyId: string) => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -25,6 +27,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenDocument,
   onOpenPresentation,
   onQuickAddPolicy,
+  bookmarkedIds = [],
+  onToggleBookmark,
 }) => {
   const [searchInput, setSearchInput] = useState('');
 
@@ -292,9 +296,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">{p.version}</span>
                 </div>
 
-                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm line-clamp-1">
-                  {p.title}
-                </h4>
+                <div className="flex items-start justify-between gap-2">
+                  <h4
+                    onClick={() => onOpenDocument(p)}
+                    className="font-extrabold text-slate-900 dark:text-white text-sm line-clamp-1 flex-1 cursor-pointer hover:text-teal-700 dark:hover:text-teal-400 transition"
+                  >
+                    {p.title}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBookmark?.(p.id);
+                    }}
+                    className={`p-1 rounded-lg border transition-all active:scale-90 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs ${
+                      bookmarkedIds.includes(p.id)
+                        ? 'bg-rose-50 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800'
+                        : 'bg-white dark:bg-slate-700 text-slate-400 hover:text-rose-500 border-slate-200 dark:border-slate-600'
+                    }`}
+                    title={bookmarkedIds.includes(p.id) ? 'إزالة من مفضلاتي' : 'إضافة إلى مفضلاتي'}
+                  >
+                    <span className="text-sm">{bookmarkedIds.includes(p.id) ? '❤️' : '🤍'}</span>
+                  </button>
+                </div>
 
                 <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed font-medium">
                   {p.purpose}

@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bunx vite build
+      # حارس أمني: ممنوع وجود مفتاح Google (AIza...) أو أسرار في الحزمة الناتجة
+      - name: Fail if a real API key leaked into the bundle
+        run: |
+          if grep -rEho "AIza[0-9A-Za-z_-]{35}" dist | head -1 | grep -q .; then
+            echo "Possible Google API key found in build output"; exit 1
+          fi

@@ -14,7 +14,7 @@
 
 2. **لوحة إدارة مؤمنة بحساب Google (Firebase Auth):**
    - تسجيل الدخول الإداري عبر Google Sign-In مع دعم وضع المحاكاة المحلي للاختبار السريع.
-   - التحقق من القائمة البيضاء المعتمدة لمديري الجودة (**Admin Whitelist**).
+   - التحقق من دور المدير من مجموعة `admins` في Firestore (تُفرض بالقواعد).
    - إبقاء المستخدمين غير المصرح لهم في وضع التصفح العام مع تنبيه لطيف.
 
 3. **قاعدة بيانات Firestore خفيفة وسريعة:**
@@ -77,9 +77,9 @@
 - **Language:** TypeScript & JavaScript
 - **Styling:** Tailwind CSS (Theme tokens, RTL, Custom Scrollbars, Hospital Print Styles)
 - **Database & Auth:** Firebase Firestore & Firebase Authentication
-- **Security Rules:** Production-grade `firestore.rules` (Role-based email whitelist)
+- **Security Rules:** `firestore.rules` بأدوار (editor / admin / superadmin) من مجموعة `admins`
 - **Document Parsers:** Mammoth (.docx) & PDF-Lib (.pdf)
-- **AI Extraction:** Gemini 2.5 Flash API
+- **AI Extraction:** Gemini 2.5 Flash عبر وكيل خادم آمن `api/gemini.ts` (المفتاح على الخادم فقط)
 - **Admin Email:** `ahmed0soliman6@gmail.com`
 
 ---
@@ -87,14 +87,16 @@
 ## 🚀 التشغيل ورفع التعديلات إلى GitHub
 
 ```bash
-# تثبيت التبعيات
-npm install
+# تثبيت التبعيات (المستودع يستخدم bun.lock)
+bun install   # أو: npm install
 
-# تشغيل خادم التطوير (React)
+# تشغيل خادم التطوير (الواجهة فقط)
 npm run dev
 
-# أو فتح النسخة المباشرة بدون تثبيت:
-# فتح ملف mih.html مباشرة في المتصفح
+# لتجربة التحويل الذكي محلياً (يحتاج /api/gemini):
+npx vercel dev
+
+# راجع AI_HANDOFF.md لخطوات النشر الأمنية الإلزامية بعد هذا التحديث
 
 # رفع التحديثات إلى مستودع GitHub
 git add .

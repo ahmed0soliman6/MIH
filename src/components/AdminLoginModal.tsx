@@ -48,7 +48,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
-  const adminCount = (settings.adminEmails || []).length;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -89,7 +88,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-              اضغط على الزر أدناه وسجل دخولك بحساب Google الخاص بك. إذا كان بريدك مسجلاً ضمن قائمة مديري الجودة المعتمدين ({adminCount} بريد مسجل)، سيتم منحك صلاحيات الإدارة فوراً.
+              اضغط على الزر أدناه وسجل دخولك بحساب Google الخاص بك. إذا كان بريدك مسجلاً ضمن مديري الجودة المعتمدين، سيتم منحك صلاحيات الإدارة بحسب دورك (محرر / مدير / مدير عام).
             </p>
           </div>
 

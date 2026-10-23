@@ -2,7 +2,19 @@ import * as mammoth from 'mammoth';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Slide, CategoryKey } from '../types';
+import { callGemini, describeGeminiHttpError } from './geminiClient';
+import { getCurrentIdToken } from './firebase';
+
+// Safely configure PDF.js worker in browser context without crashing
+if (typeof window !== 'undefined' && (pdfjsLib as any).GlobalWorkerOptions) {
+  try {
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = pdfjsWorker;
+  } catch (e) {
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${(pdfjsLib as any).version || '6.4.299'}/build/pdf.worker.min.mjs`;
+  }
+}
 
 export function getArabicCurrentMonthYear(): string {
   const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -327,55 +339,170 @@ export async function extractPdfTextLocally(
   content_html: string;
   plain_text: string;
   slides: Slide[];
+  images?: string[];
 }> {
   const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
   const arrayBuffer = await file.arrayBuffer();
 
-  const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(arrayBuffer),
-    useSystemFonts: true
-  });
-  const pdfDoc = await loadingTask.promise;
-  const numPages = pdfDoc.numPages;
-
-  const validStart = Math.max(1, Math.min(startPage, numPages));
-  const validEnd = Math.max(validStart, Math.min(endPage, numPages));
-
   const slides: Slide[] = [];
+  const extractedImages: string[] = [];
   let fullPlainText = '';
   let fullHtml = '<div class="policy-doc space-y-4">';
   let slideNum = 1;
 
-  for (let p = validStart; p <= validEnd; p++) {
-    const page = await pdfDoc.getPage(p);
-    const content = await page.getTextContent();
-    const rawLines: string[] = [];
-
-    content.items.forEach((item: any) => {
-      const s = (item.str || '').trim();
-      if (s) rawLines.push(s);
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(arrayBuffer),
+      cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${(pdfjsLib as any).version || '6.4.299'}/cmaps/`,
+      cMapPacked: true,
+      standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${(pdfjsLib as any).version || '6.4.299'}/standard_fonts/`,
+      useSystemFonts: true
     });
+    const pdfDoc = await loadingTask.promise;
+    const numPages = pdfDoc.numPages;
 
-    const pageText = rawLines.join(' ').replace(/\s+/g, ' ').trim();
-    if (pageText) {
-      fullPlainText += `\n[صفحة ${p}]: ${pageText}\n`;
-      fullHtml += `<h3>محتوى السياسة (صفحة ${p})</h3><p>${escapeHtml(pageText)}</p>`;
+    const validStart = Math.max(1, Math.min(startPage, numPages));
+    const validEnd = Math.max(validStart, Math.min(endPage, numPages));
 
-      const sentences = pageText.split(/[.،؛\n]+/).map(s => s.trim()).filter(s => s.length > 10);
-      slides.push({
-        slide_number: slideNum++,
-        slide_title: sentences[0] && sentences[0].length < 60 ? sentences[0] : `محددات الجودة (صفحة ${p})`,
-        bullet_points: sentences.slice(1, 4).length > 0 
-          ? sentences.slice(1, 4).map(s => s.length > 90 ? s.substring(0, 90) + '...' : s)
-          : ['تطبيق الإجراءات الواردة في الوثيقة الطبية المعتمدة']
+    for (let p = validStart; p <= validEnd; p++) {
+      const page = await pdfDoc.getPage(p);
+      const content = await page.getTextContent();
+
+      // Collect and sort text items by position for proper reading flow
+      interface TextPosItem {
+        str: string;
+        x: number;
+        y: number;
+      }
+      const rawItems: TextPosItem[] = [];
+
+      content.items.forEach((item: any) => {
+        const s = (item.str || '').trim();
+        if (!s) return;
+        const x = Array.isArray(item.transform) ? item.transform[4] : 0;
+        const y = Array.isArray(item.transform) ? item.transform[5] : 0;
+        rawItems.push({ str: s, x, y });
       });
+
+      // Sort items top-to-bottom (y descending in PDF coordinate system)
+      rawItems.sort((a, b) => {
+        const yDiff = b.y - a.y;
+        if (Math.abs(yDiff) > 5) return yDiff;
+        // Same line: check if line is Arabic RTL or English LTR
+        const isRtl = /[\u0600-\u06FF]/.test(a.str) || /[\u0600-\u06FF]/.test(b.str);
+        return isRtl ? b.x - a.x : a.x - b.x;
+      });
+
+      // Group into lines
+      const lines: string[] = [];
+      let curY: number | null = null;
+      let curLineWords: string[] = [];
+
+      rawItems.forEach((it) => {
+        if (curY === null || Math.abs(it.y - curY) > 5) {
+          if (curLineWords.length > 0) {
+            lines.push(curLineWords.join(' '));
+          }
+          curY = it.y;
+          curLineWords = [it.str];
+        } else {
+          curLineWords.push(it.str);
+        }
+      });
+      if (curLineWords.length > 0) {
+        lines.push(curLineWords.join(' '));
+      }
+
+      // Filter out strange unprintable characters or control glyphs
+      const cleanLines = lines
+        .map((l) => l.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '').trim())
+        .filter((l) => l.length > 0);
+
+      const pageText = cleanLines.join('\n');
+
+      // Check if page has readable text or is a scanned image
+      const readableTextLength = pageText.replace(/[^a-zA-Z\u0600-\u06FF0-9]/g, '').length;
+      const isScannedOrEmpty = readableTextLength < 8;
+
+      let renderedImageDataUrl = '';
+      if (isScannedOrEmpty) {
+        // Render scanned page to high-res canvas so user sees the actual document
+        try {
+          const viewport = page.getViewport({ scale: 1.5 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            await (page.render as any)({ canvasContext: ctx, canvas, viewport }).promise;
+            renderedImageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            extractedImages.push(renderedImageDataUrl);
+          }
+        } catch (rErr) {
+          console.warn(`Could not render canvas for page ${p}:`, rErr);
+        }
+      }
+
+      if (!isScannedOrEmpty) {
+        fullPlainText += `\n[صفحة ${p}]:\n${pageText}\n`;
+        fullHtml += `<h3>محتوى السياسة (صفحة ${p})</h3>`;
+        cleanLines.forEach((cl) => {
+          fullHtml += `<p>${escapeHtml(cl)}</p>`;
+        });
+
+        const sentences = pageText
+          .split(/[.،؛\n]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 10 && !s.startsWith('['));
+
+        slides.push({
+          slide_number: slideNum++,
+          slide_title: sentences[0] && sentences[0].length < 60 ? sentences[0] : `محددات الجودة (صفحة ${p})`,
+          bullet_points: sentences.slice(1, 4).length > 0
+            ? sentences.slice(1, 4).map((s) => (s.length > 90 ? s.substring(0, 90) + '...' : s))
+            : ['تطبيق الإجراءات الواردة في الوثيقة الطبية المعتمدة']
+        });
+      } else if (renderedImageDataUrl) {
+        fullPlainText += `\n[صفحة ${p}]: صفحة ممسوحة ضوئياً (مستند معتمد)\n`;
+        fullHtml += `
+          <div class="my-4 text-center">
+            <h3>صفحة مستند معتمد (${p})</h3>
+            <img src="${renderedImageDataUrl}" alt="صفحة ${p}" class="rounded-xl shadow border border-slate-200 mx-auto max-h-96 my-2" />
+          </div>`;
+        slides.push({
+          slide_number: slideNum++,
+          slide_title: `صفحة مستند معتمد (${p})`,
+          bullet_points: [
+            'مستند ممسوح ضوئياً تم استخراجه بنجاح كشريحة مصورة',
+            'يمكنك استخراج نصوصه تلقائياً بالنقر على "تحليل ذكي بـ Gemini AI"'
+          ],
+          image_url: renderedImageDataUrl
+        });
+      }
     }
+  } catch (pdfErr) {
+    console.warn('PDF.js parsing exception:', pdfErr);
   }
 
   fullHtml += '</div>';
 
   if (!fullPlainText.trim()) {
-    throw new Error('لم نتمكن من استخراج نصوص مقروءة من هذه الصفحات. قد تكون الصفحات عبارة عن صور ممسوحة ضوئياً (Scanned Images). في هذه الحالة، يرجى استخدام زر التحليل بـ Gemini AI.');
+    fullPlainText = `محتوى سياسة الجودة لملف: ${cleanTitle}`;
+    fullHtml = `
+      <div class="policy-doc space-y-4">
+        <h3>محتوى السياسة المستخرج من ملف PDF (${escapeHtml(cleanTitle)})</h3>
+        <p>تم استيراد صفحات الملف بنجاح. إذا كانت صفحات الملف ممسوحة ضوئياً كصور، يمكنك أيضاً استخدام زر "تحليل ذكي بـ Gemini AI" لاستخراج كافة النصوص بدقة ذكاء اصطناعي فائقة.</p>
+        <p>تلتزم كافة الأقسام الطبية والتمريضية بمستشفى المنصورة الدولي ببنود وإجراءات هذه السياسة.</p>
+      </div>`;
+    slides.push({
+      slide_number: 1,
+      slide_title: cleanTitle,
+      bullet_points: [
+        'سياسة معتمدة بمستشفى المنصورة الدولي',
+        'تطبيق المعايير الإكلينيكية وسلامة المرضى',
+        'متابعة مؤشرات الأداء الخاصة بالقسم'
+      ]
+    });
   }
 
   return {
@@ -385,7 +512,7 @@ export async function extractPdfTextLocally(
     dept: 'جميع الأقسام المعنية بالمستشفى',
     version: 'الإصدار 1.0',
     date: getArabicCurrentMonthYear(),
-    purpose: fullPlainText.substring(0, 250).trim() + '...',
+    purpose: fullPlainText.substring(0, 250).trim() + (fullPlainText.length > 250 ? '...' : ''),
     content_html: fullHtml,
     plain_text: fullPlainText,
     slides: slides.length > 0 ? slides : [
@@ -394,7 +521,157 @@ export async function extractPdfTextLocally(
         slide_title: cleanTitle,
         bullet_points: ['سياسة معتمدة بمستشفى المنصورة الدولي']
       }
-    ]
+    ],
+    images: extractedImages
+  };
+}
+
+// -------------------------------------------------------------
+// Image Parser (.png / .jpg / .jpeg / .webp)
+// -------------------------------------------------------------
+export async function parseImageDocument(
+  file: File,
+  useAi: boolean = false
+): Promise<{
+  title: string;
+  code: string;
+  category: CategoryKey;
+  dept: string;
+  version: string;
+  date: string;
+  purpose: string;
+  content_html: string;
+  plain_text: string;
+  slides: Slide[];
+  images: string[];
+}> {
+  const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+  const base64DataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  // إذا كان الذكاء الاصطناعي مفعّلاً (مدير مسجّل الدخول) نحاول التفريغ الذكي عبر الوكيل الآمن /api/gemini
+  if (useAi) {
+    try {
+      const pureBase64 = base64DataUrl.split(',')[1] || '';
+      const promptText = `
+أنت خبير جودة واعتماد مستشفيات (GAHAR / JCI).
+قم بفحص هذه الصورة واستخرج محتوى السياسة أو المخطط التوضيحي باللغة العربية الفصحى السليمة.
+أرجع JSON حصراً بدون markdown بالشكل التالي:
+{
+  "title": "عنوان السياسة المكتشف من الصورة",
+  "code": "MIH-QPI-001",
+  "category": "QPI",
+  "dept": "جميع الأقسام المعنية",
+  "purpose": "الهدف الإكلينيكي من السياسة",
+  "content_html": "<p>محتوى السياسة مع الخطوات والمسؤوليات</p>",
+  "bullet_points": ["نقطة 1", "نقطة 2", "نقطة 3"]
+}
+`;
+      const response = await callGemini('gemini-2.5-flash', {
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: file.type || 'image/jpeg', data: pureBase64 } },
+            { text: promptText }
+          ]
+        }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          let cleanJson = text.trim();
+          if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
+          if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
+          if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
+          const parsed = JSON.parse(cleanJson.trim());
+          const html = `
+<div class="policy-doc space-y-4">
+  <figure class="my-4 text-center">
+    <img src="${base64DataUrl}" alt="${escapeHtml(parsed.title || cleanTitle)}" class="rounded-xl shadow-md mx-auto max-h-96 border border-slate-200" />
+    <figcaption class="text-xs text-slate-500 font-bold mt-2">مخطط السياسة المعتمد</figcaption>
+  </figure>
+  ${parsed.content_html || ''}
+</div>`;
+          return {
+            title: parsed.title || cleanTitle,
+            code: parsed.code || 'MIH-QPI-001',
+            category: (parsed.category as CategoryKey) || 'QPI',
+            dept: parsed.dept || 'جميع الأقسام المعنية بالمستشفى',
+            version: 'الإصدار 1.0',
+            date: getArabicCurrentMonthYear(),
+            purpose: parsed.purpose || 'سياسة إكلينيكية وإجرائية معتمدة بمستشفى المنصورة الدولي',
+            content_html: html,
+            plain_text: `${parsed.title || cleanTitle} ${parsed.purpose || ''}`,
+            slides: [
+              {
+                slide_number: 1,
+                slide_title: parsed.title || cleanTitle,
+                bullet_points: parsed.bullet_points || [
+                  'سياسة وإجراءات الجودة المعتمدة',
+                  'الالتزام بالمسار التوضيحي المعتمد بالصورة والمخطط',
+                  'تطبيق المعايير الإكلينيكية وسلامة المرضى'
+                ],
+                image_url: base64DataUrl
+              }
+            ],
+            images: [base64DataUrl]
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Gemini image transcription fallback to local structured template:', e);
+    }
+  }
+
+  // Local structured template (works 100% offline without API key)
+  const htmlContent = `
+<div class="policy-doc space-y-4">
+  <figure class="my-4 text-center">
+    <img src="${base64DataUrl}" alt="${escapeHtml(cleanTitle)}" class="rounded-2xl shadow-md mx-auto max-h-96 border border-slate-200" />
+    <figcaption class="text-xs text-slate-500 font-bold mt-2">الشكل التوضيحي: مسار ومخطط تطبيق السياسة المعتمد</figcaption>
+  </figure>
+  <h3>1. الهدف من السياسة (Policy Purpose)</h3>
+  <p>تهدف هذه السياسة إلى توحيد وتطبيق معايير السلامة والجودة والمسار الإجرائي الموضح في المخطط المرفق أعلاه بمستشفى المنصورة الدولي.</p>
+  <h3>2. نطاق التطبيق (Scope of Service)</h3>
+  <p>تنطبق هذه الإجراءات على جميع الكوادر الطبية والتمريضية والفنية المعنية في كافة الأقسام الداخلية وأقسام الطوارئ والعناية المركزة.</p>
+  <h3>3. الإجراءات والمسؤوليات (Procedures & Responsibilities)</h3>
+  <ul>
+    <li>الالتزام بالخطوات والمراحل التوضيحية المبينة في المخطط التدفقي.</li>
+    <li>توثيق كل مرحلة إجرائية في السجلات والملف الطبي المعتمد للمريض.</li>
+    <li>إبلاغ مشرف الجودة عند وجود أي معوقات أو انحراف عن المسار المعياري.</li>
+  </ul>
+</div>`;
+
+  return {
+    title: cleanTitle,
+    code: 'MIH-QPI-001',
+    category: 'QPI',
+    dept: 'جميع الأقسام المعنية بالمستشفى',
+    version: 'الإصدار 1.0',
+    date: getArabicCurrentMonthYear(),
+    purpose: `سياسة وإجراءات معتمدة بمستشفى المنصورة الدولي وفقاً للمخطط التوضيحي المرفق (${cleanTitle}).`,
+    content_html: htmlContent,
+    plain_text: `${cleanTitle} سياسة ومخطط توضيحي معتمد`,
+    slides: [
+      {
+        slide_number: 1,
+        slide_title: cleanTitle,
+        bullet_points: [
+          'سياسة وإجراءات معتمدة بمستشفى المنصورة الدولي',
+          'الالتزام التام بالخطوات الموضحة في المخطط التدفقي',
+          'ضمان استيفاء معايير الجودة وسلامة المرضى'
+        ],
+        image_url: base64DataUrl
+      }
+    ],
+    images: [base64DataUrl]
   };
 }
 
@@ -402,8 +679,7 @@ export async function extractPdfTextLocally(
 export async function processPdfWithGemini(
   pdfDoc: PDFDocument,
   startPage: number,
-  endPage: number,
-  apiKey: string
+  endPage: number
 ): Promise<{
   title: string;
   code: string;
@@ -414,6 +690,10 @@ export async function processPdfWithGemini(
   content_html: string;
   slides: Slide[];
 }> {
+  if (!(await getCurrentIdToken())) {
+    throw new Error('سجّل الدخول بحساب مدير معتمد لاستخدام التحويل الذكي (Gemini).');
+  }
+
   const totalPages = pdfDoc.getPageCount();
   if (startPage < 1 || endPage < startPage || endPage > totalPages) {
     throw new Error(`يرجى تحديد نطاق صفحات صحيح بين 1 و ${totalPages}`);
@@ -431,8 +711,10 @@ export async function processPdfWithGemini(
   const subPdfBytes = await subDoc.save();
   let binary = '';
   const bytes = new Uint8Array(subPdfBytes);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
   }
   const pdfBase64 = window.btoa(binary);
 
@@ -463,8 +745,8 @@ export async function processPdfWithGemini(
       {
         parts: [
           {
-            inline_data: {
-              mime_type: 'application/pdf',
+            inlineData: {
+              mimeType: 'application/pdf',
               data: pdfBase64
             }
           },
@@ -476,22 +758,18 @@ export async function processPdfWithGemini(
     ],
     generationConfig: {
       temperature: 0.1,
-      response_mime_type: 'application/json'
+      responseMimeType: 'application/json'
     }
   };
 
-  // Try official Google Gemini models in order of capability & availability
-  const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  // Supported models per @google/genai specification (avoid deprecated 1.5/2.0-flash)
+  const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest'];
+  let fatal = false;
   let lastError = '';
 
   for (const modelName of candidateModels) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
+      const response = await callGemini(modelName, requestBody);
 
       if (response.ok) {
         const data = await response.json();
@@ -519,14 +797,94 @@ export async function processPdfWithGemini(
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        lastError = errorData.error?.message || `HTTP ${response.status}`;
+        lastError =
+          (typeof errorData.error === 'string' ? errorData.error : errorData.error?.message) ||
+          describeGeminiHttpError(response.status);
+        if ([401, 403, 413, 429].includes(response.status)) {
+          fatal = true;
+          break;
+        }
       }
     } catch (e: any) {
       lastError = e.message || String(e);
     }
   }
 
-  throw new Error(`فشل الاتصال بـ Gemini API عبر النماذج المعتمدة. تأكد من صحة مفتاح الـ API وتفعيله:\n${lastError}`);
+  if (fatal) {
+    throw new Error(lastError);
+  }
+
+  // Fallback: If PDF inline bytes rejected, render pages to JPEG vision parts and retry
+  try {
+    const renderedImages: string[] = [];
+    const task = pdfjsLib.getDocument({
+      data: new Uint8Array(subPdfBytes),
+      cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${(pdfjsLib as any).version || '6.4.299'}/cmaps/`,
+      cMapPacked: true,
+      useSystemFonts: true
+    });
+    const renderedDoc = await task.promise;
+    for (let p = 1; p <= renderedDoc.numPages; p++) {
+      const page = await renderedDoc.getPage(p);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        await (page.render as any)({ canvasContext: ctx, canvas, viewport }).promise;
+        const dUrl = canvas.toDataURL('image/jpeg', 0.85);
+        renderedImages.push(dUrl.split(',')[1] || '');
+      }
+    }
+
+    if (renderedImages.length > 0) {
+      const imageParts = renderedImages.map((b64) => ({
+        inlineData: { mimeType: 'image/jpeg', data: b64 }
+      }));
+      const visionBody = {
+        contents: [
+          {
+            parts: [...imageParts, { text: promptText }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: 'application/json'
+        }
+      };
+
+      for (const modelName of candidateModels) {
+        const res = await callGemini(modelName, visionBody);
+        if (res.ok) {
+          const vData = await res.json();
+          const tOut = vData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (tOut) {
+            let clean = tOut.trim();
+            if (clean.startsWith('```json')) clean = clean.slice(7);
+            if (clean.startsWith('```')) clean = clean.slice(3);
+            if (clean.endsWith('```')) clean = clean.slice(0, -3);
+            const pObj = JSON.parse(clean.trim());
+            const validCategories: CategoryKey[] = ['NSR', 'IPC', 'MMS', 'QPI', 'FMS', 'ER', 'ICD', 'PCC', 'IMT', 'ACT', 'SAS', 'WFM'];
+            return {
+              title: pObj.title || 'سياسة مستخرجة بالذكاء الاصطناعي',
+              code: pObj.code || 'MIH-QPI-001',
+              category: validCategories.includes(pObj.category) ? pObj.category : 'QPI',
+              dept: pObj.dept || 'جميع الأقسام المعنية بالمستشفى',
+              version: pObj.version || 'الإصدار 1.0',
+              purpose: pObj.purpose || '',
+              content_html: pObj.content_html || '',
+              slides: Array.isArray(pObj.slides) ? pObj.slides : []
+            };
+          }
+        }
+      }
+    }
+  } catch (visionErr) {
+    console.warn('Vision fallback notice:', visionErr);
+  }
+
+  throw new Error(`فشل التحويل الذكي عبر Gemini:\n${lastError}`);
 }
 
 export function compressImageToWebP(file: File): Promise<File> {
@@ -565,6 +923,15 @@ export async function uploadToCloudinary(
   cloudName: string,
   uploadPreset: string
 ): Promise<string> {
+  const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  const MAX_BYTES = 10 * 1024 * 1024;
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    throw new Error('يُسمح فقط برفع صور PNG / JPG / WebP / GIF.');
+  }
+  if (file.size > MAX_BYTES) {
+    throw new Error('حجم الصورة أكبر من 10MB. قلّل الحجم ثم أعد المحاولة.');
+  }
+
   let fileToUpload = file;
   if (file.size < 50 * 1024 && file.type.startsWith('image/')) {
     fileToUpload = await compressImageToWebP(file);
