@@ -19,6 +19,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
   deleteDoc,
   writeBatch,
   serverTimestamp,
@@ -350,7 +351,12 @@ export async function deleteAdminDoc(db: Firestore | null, email: string): Promi
   await deleteDoc(doc(db, 'admins', email.trim().toLowerCase()));
 }
 
-export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole, updatedBy: string = 'system'): Promise<void> {
-  return addAdminDoc(db, email, role, updatedBy);
+export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole): Promise<void> {
+  if (!db) throw new Error('Firestore غير متصل');
+  const clean = email.trim().toLowerCase();
+  await updateDoc(doc(db, 'admins', clean), {
+    role,
+    updated_at: serverTimestamp()
+  });
 }
 

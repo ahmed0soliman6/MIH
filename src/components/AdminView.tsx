@@ -122,7 +122,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
-  const [activeTopCard, setActiveTopCard] = useState<'converter' | 'editor' | 'admins' | 'all'>('converter');
+  const [activeTopCard, setActiveTopCard] = useState<'converter' | 'editor' | 'admins'>('converter');
 
   // Form state
   const [title, setTitle] = useState('');
@@ -153,6 +153,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [pdfEndPage, setPdfEndPage] = useState<number>(5);
 
   // إدارة المديرين (superadmin فقط؛ تُفرض فعلياً بقواعد Firestore)
+  const [localAdmins, setLocalAdmins] = useState<AdminEntry[]>(adminList);
+  useEffect(() => {
+    setLocalAdmins(adminList);
+  }, [adminList]);
+
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminRole, setNewAdminRole] = useState<AdminRole>('editor');
   const isSuperAdmin = adminRole === 'superadmin';
@@ -166,7 +171,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowToast('يرجى إدخال بريد إلكتروني كامل وصالح (مثال: name@gmail.com)');
       return;
     }
-    if (adminList.some((a) => a.email === clean)) {
+    if (localAdmins.some((a) => a.email.toLowerCase() === clean)) {
       onShowToast('هذا البريد مسجل بالفعل في قائمة المديرين');
       return;
     }
@@ -190,12 +195,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
     if (email === currentUserEmail.trim().toLowerCase() && newRole !== 'superadmin') {
       if (!confirm('تحذير: أنت على وشك خفض صلاحيات حسابك الحالي. هل تريد المتابعة؟')) return;
     }
+    // تحديث تفاؤلي فوري في الواجهة
+    setLocalAdmins((prev) =>
+      prev.map((a) => (a.email.toLowerCase() === email.toLowerCase() ? { ...a, role: newRole } : a))
+    );
     onShowLoading(true, `جاري تعديل دور (${email}) إلى (${newRole})...`);
     try {
       await onUpdateAdminRole(email, newRole);
       onShowLoading(false);
       onShowToast(`تم بنجاح تعديل دور ${email} إلى ${newRole}`);
     } catch (err: any) {
+      setLocalAdmins(adminList);
       onShowLoading(false);
       alert(`حدث خطأ أثناء تعديل الدور: ${err.message || err}`);
     }
@@ -396,7 +406,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
         doc: pdfDoc
       });
       setPdfStartPage(1);
-      setPdfEndPage(Math.min(5, totalPages));
+      setPdfEndPage(Math.min(2, totalPages));
 
       onShowLoading(false);
       onShowToast(`تم تحميل ملف PDF (${totalPages} صفحة). يمكنك الآن الاختيار بين الاستخراج المحلي الفوري أو التحليل بـ Gemini.`);
@@ -412,7 +422,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleExtractPdfLocally = async () => {
     if (!rawPdfFile) return;
 
-    onShowLoading(true, `جاري استخراج النصوص محلياً من الصفحات (${pdfStartPage}) إلى (${pdfEndPage}) في المتصفح...`);
+    onShowLoading(true, `جاري استخراج النصوص محلياً من الصفحات (${pdfStartPage}) إلى (${pdfEndPage}) في المتصفح وتصحيح الحروف...`);
     try {
       const parsed = await extractPdfTextLocally(rawPdfFile, pdfStartPage, pdfEndPage);
       setTitle(parsed.title);
@@ -430,7 +440,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
 
       onShowLoading(false);
-      onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API!`);
+      onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API مع تصحيح الحروف!`);
       setEditorTab('preview-doc');
       setActiveTopCard('editor');
     } catch (err: any) {
@@ -463,9 +473,40 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setEditorTab('preview-doc');
       setActiveTopCard('editor');
     } catch (err: any) {
-      onShowLoading(false);
       console.error(err);
-      alert('حدث خطأ أثناء معالجة الذكاء الاصطناعي: ' + (err.message || err));
+      const errMsg = String(err.message || err);
+      const isTimeoutOr504 = errMsg.includes('504') || errMsg.includes('Gateway Timeout') || errMsg.includes('انتهت مهلة') || errMsg.includes('FUNCTION_INVOCATION_TIMEOUT');
+
+      if (isTimeoutOr504 && rawPdfFile) {
+        onShowLoading(true, '⚠️ انتهت مهلة معالجة الذكاء الاصطناعي (504). جاري التحويل التلقائي للاستخراج المحلي فائق السرعة مع تصحيح الحروف...');
+        try {
+          const parsed = await extractPdfTextLocally(rawPdfFile, pdfStartPage, pdfEndPage);
+          setTitle(parsed.title);
+          setCode(parsed.code);
+          setCategory(parsed.category);
+          setDept(parsed.dept);
+          setVersion(parsed.version);
+          setDate(parsed.date);
+          setPurpose(parsed.purpose);
+          setContentHtml(parsed.content_html);
+          setSlides(parsed.slides);
+          if (parsed.images && parsed.images.length > 0) {
+            setImages(parsed.images);
+          }
+          setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
+
+          onShowLoading(false);
+          onShowToast('⚡ تم التحويل بنجاح للاستخراج المحلي وتصحيح الحروف المقطعة تلقائياً!');
+          setEditorTab('preview-doc');
+          setActiveTopCard('editor');
+          return;
+        } catch (fallbackErr) {
+          console.error('Fallback error:', fallbackErr);
+        }
+      }
+
+      onShowLoading(false);
+      alert('حدث خطأ أثناء معالجة الذكاء الاصطناعي: ' + errMsg + '\n\n💡 نصيحة: اختر صفحة أو صفحتين فقط لتقليل وقت المعالجة وتجنب انتهاء المهلة، أو استخدم زر "⚡ استخراج محلي سريع".');
     }
   };
 
@@ -671,52 +712,44 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span>📥</span>
             <span>تصدير نسخة JSON</span>
           </button>
-          <button
-            type="button"
-            onClick={onResetDefaults}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950 text-red-700 dark:text-red-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
-          >
-            <span>🔄</span>
-            <span>استعادة الافتراضي</span>
-          </button>
         </div>
       </div>
 
-      {/* 3 Top Cards in the same row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
+      {/* 3 Top Cards strictly in the same row */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {/* Card 1 Tab: Smart AI Converter */}
         <div
           onClick={() => setActiveTopCard('converter')}
-          className={`p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
             activeTopCard === 'converter'
               ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
           }`}
         >
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-2xl p-2 rounded-2xl bg-teal-500/10 text-teal-700 dark:text-teal-300">🚀</span>
-              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-teal-500/10 text-teal-700 dark:text-teal-300">🚀</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
                 activeTopCard === 'converter'
                   ? 'bg-teal-600 text-white'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
               }`}>
-                {activeTopCard === 'converter' ? 'النشط حالياً' : 'انقر للفتح'}
+                {activeTopCard === 'converter' ? 'النشط' : 'فتح'}
               </span>
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
                 محرك الرفع والتحويل الذكي
               </h3>
-              <p className="text-[11px] font-mono text-teal-700 dark:text-teal-400 font-bold">
+              <p className="text-[9px] sm:text-[11px] font-mono text-teal-700 dark:text-teal-400 font-bold truncate">
                 Smart AI Converter
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
                 رفع واستخراج فوري لملفات Word و PDF و PPTX والصور تلقائياً
               </p>
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-teal-800 dark:text-teal-300">
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-teal-800 dark:text-teal-300">
             <span>تحويل فوري + بناء الشرائح</span>
             <span>←</span>
           </div>
@@ -725,16 +758,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
         {/* Card 2 Tab: Policy Editor & Preview */}
         <div
           onClick={() => setActiveTopCard('editor')}
-          className={`p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
             activeTopCard === 'editor'
               ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
           }`}
         >
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-2xl p-2 rounded-2xl bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">📝</span>
-              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">📝</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
                 activeTopCard === 'editor'
                   ? 'bg-teal-600 text-white'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
@@ -743,18 +776,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </span>
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
                 محرر ومعاينة السياسة
               </h3>
-              <p className="text-[11px] font-mono text-indigo-700 dark:text-indigo-400 font-bold">
+              <p className="text-[9px] sm:text-[11px] font-mono text-indigo-700 dark:text-indigo-400 font-bold truncate">
                 Policy Editor & Preview
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
                 تحرير الحقول والشرائح ومعاينة الوثيقة الرسمية ومحاكي العرض
               </p>
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-indigo-800 dark:text-indigo-300">
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-indigo-800 dark:text-indigo-300">
             <span>المعاينة والحفظ السحابي</span>
             <span>←</span>
           </div>
@@ -763,36 +796,36 @@ export const AdminView: React.FC<AdminViewProps> = ({
         {/* Card 3 Tab: Quality Managers & Roles */}
         <div
           onClick={() => setActiveTopCard('admins')}
-          className={`p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
             activeTopCard === 'admins'
               ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
           }`}
         >
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-2xl p-2 rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">👥</span>
-              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">👥</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
                 activeTopCard === 'admins'
                   ? 'bg-teal-600 text-white'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
               }`}>
-                {adminList.length} مديرين
+                {localAdmins.length} مديرين
               </span>
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
                 إدارة مديري الجودة والأدوار
               </h3>
-              <p className="text-[11px] font-mono text-amber-700 dark:text-amber-400 font-bold">
+              <p className="text-[9px] sm:text-[11px] font-mono text-amber-700 dark:text-amber-400 font-bold truncate">
                 Quality Managers & Roles
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
                 إضافة واعتماد وتعديل صلاحيات المديرين (محرر / مدير / مدير عام)
               </p>
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
             <span>تعديل الصلاحيات والأدوار</span>
             <span>←</span>
           </div>
@@ -800,7 +833,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       </div>
 
       {/* 1. Section: محرك الرفع والتحويل الذكي (Smart AI Converter) */}
-      {(activeTopCard === 'converter' || activeTopCard === 'all') && (
+      {activeTopCard === 'converter' && (
         <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
           <div>
             <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
@@ -964,7 +997,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       )}
 
       {/* 3. Section: إدارة مديري الجودة والأدوار (Quality Managers & Roles) */}
-      {(activeTopCard === 'admins' || activeTopCard === 'all') && canSeeAdmins && (
+      {activeTopCard === 'admins' && canSeeAdmins && (
         <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
             <div className="space-y-1">
@@ -977,7 +1010,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </p>
             </div>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
-              {adminList.length} مديرين معتمدين
+              {localAdmins.length} مديرين معتمدين
             </span>
           </div>
 
@@ -1023,7 +1056,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               قائمة المديرين المسجلين وتعديل الأدوار الفوري:
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {adminList.map((a) => {
+              {localAdmins.map((a) => {
                 const isCurrent = a.email.toLowerCase() === currentUserEmail.trim().toLowerCase();
                 return (
                   <div
@@ -1095,7 +1128,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       )}
 
       {/* 2. Section: محرر ومعاينة السياسة (Policy Editor & Preview) */}
-      {(activeTopCard === 'editor' || activeTopCard === 'all') && (
+      {activeTopCard === 'editor' && (
       <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
         {/* Policy Quick Selector Banner */}
         {policies && policies.length > 0 && (

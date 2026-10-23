@@ -95,10 +95,9 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
           onClick={() => {
             if (onNavigateTab) onNavigateTab('home');
-            if (onSelectCategory) onSelectCategory('ALL');
             if (isMobileView) onClose();
           }}
-          title={isEn ? 'Mansoura International Hospital' : 'مستشفى المنصورة الدولي'}
+          title={isEn ? 'Mansoura International Hospital — Quality & Patient Safety' : 'مستشفى المنصورة الدولي — إدارة الجودة وسلامة المرضى'}
         >
           {/* Hospital Logo Emblem */}
           <img
@@ -112,8 +111,11 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           <div className="min-w-0 flex-1">
             <h1 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate leading-tight tracking-tight">
               {isEn ? 'Mansoura Int. Hospital' : 'مستشفى المنصورة الدولي'}
+              <span className="block text-[11px] font-bold text-teal-800 dark:text-teal-300 truncate">
+                {isEn ? 'Quality & Patient Safety' : '— إدارة الجودة وسلامة المرضى'}
+              </span>
             </h1>
-            <p className="text-[10px] font-bold text-teal-700 dark:text-teal-400 truncate mt-0.5">
+            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate mt-0.5">
               {isEn ? 'Specialized Medical Centers' : 'أمانة المراكز الطبية المتخصصة'}
             </p>
           </div>

@@ -744,13 +744,19 @@ export const App: React.FC = () => {
   };
 
   const handleUpdateAdminRole = async (email: string, role: AdminRole) => {
+    const clean = email.trim().toLowerCase();
+    setAdminList((prev) =>
+      prev.map((a) => (a.email.toLowerCase() === clean ? { ...a, role } : a))
+    );
     try {
       const fb = await loadFirebase();
-      await fb.updateAdminRole(fbRef.current.db, email, role);
+      await fb.updateAdminRole(fbRef.current.db, clean, role);
       await refreshAdminList();
-      showToast(`تم تغيير صلاحية ${email} إلى (${role}) بنجاح 👑`);
+      showToast(`تم تغيير صلاحية ${clean} إلى (${role}) بنجاح 👑`);
     } catch (e: any) {
+      await refreshAdminList();
       showToast(`تعذر تعديل الصلاحية: ${friendlyError(e)}`);
+      throw e;
     }
   };
 
