@@ -185,25 +185,6 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           )}
         </div>
 
-        {/* زر العودة للصفحة الرئيسية */}
-        {onNavigateTab && (
-          <button
-            type="button"
-            onClick={() => {
-              onNavigateTab('home');
-              if (onSelectCategory) onSelectCategory('ALL');
-              if (isMobileView) onClose();
-            }}
-            className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              currentTab === 'home' && selectedCategory !== 'BOOKMARKS'
-                ? 'bg-teal-700 text-white shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-            }`}
-          >
-            <span>🏠</span>
-            <span>{isEn ? 'Home Overview' : 'الصفحة الرئيسية للمستشفى'}</span>
-          </button>
-        )}
       </div>
 
       {/* 3. Section Title: أقسام ومعايير الجودة */}
