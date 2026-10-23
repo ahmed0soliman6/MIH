@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Policy, CategoryKey, AuthUser } from '../types';
 import { CATEGORY_META } from '../data/meta';
 import { TabType } from './Navbar';
@@ -8,6 +8,7 @@ interface DepartmentSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   policies: Policy[];
+  bundlesCount?: number;
   onSelectPolicy: (policy: Policy) => void;
   onLaunchPresentation?: (policy: Policy) => void;
   onSelectCategory?: (category: string) => void;
@@ -24,12 +25,14 @@ interface DepartmentSidebarProps {
   onToggleLanguage?: () => void;
   bookmarkedIds?: string[];
   onToggleBookmark?: (policyId: string) => void;
+  onOpenBookmarks?: () => void;
 }
 
 export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   isOpen,
   onClose,
   policies,
+  bundlesCount = 5,
   onSelectCategory,
   selectedCategory = 'ALL',
   currentTab = 'home',
@@ -43,9 +46,8 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   lang = 'ar',
   onToggleLanguage,
   bookmarkedIds = [],
+  onOpenBookmarks,
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
 
@@ -63,208 +65,278 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   // Group policies by category key
   const groupedPolicies = useMemo(() => {
     const map: Record<string, Policy[]> = {};
-    const lowerSearch = searchTerm.trim().toLowerCase();
-
     policies.forEach((p) => {
-      if (lowerSearch) {
-        const matchesTitle = (p.title || '').toLowerCase().includes(lowerSearch);
-        const matchesCode = (p.code || '').toLowerCase().includes(lowerSearch);
-        const matchesDept = (p.dept || '').toLowerCase().includes(lowerSearch);
-        const matchesCat = (p.category || '').toLowerCase().includes(lowerSearch);
-        if (!matchesTitle && !matchesCode && !matchesDept && !matchesCat) {
-          return;
-        }
-      }
-
       const cat = p.category || 'QPI';
       if (!map[cat]) map[cat] = [];
       map[cat].push(p);
     });
-
     return map;
-  }, [policies, searchTerm]);
+  }, [policies]);
 
   // Standard category order matching hospital quality structure
   const categoriesOrder: CategoryKey[] = [
     'NSR', 'IPC', 'MMS', 'QPI', 'FMS', 'ER', 'ICD', 'PCC', 'IMT', 'ACT', 'SAS', 'WFM'
   ];
 
+  const handleBookmarksClick = () => {
+    if (onSelectCategory) {
+      onSelectCategory('BOOKMARKS');
+    } else if (onOpenBookmarks) {
+      onOpenBookmarks();
+    }
+  };
+
   const renderSidebarContent = (isMobileView = false) => (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 select-none">
       
-      {/* 1. Header: Hospital Brand & Portal Identity */}
-      <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/80 flex items-center justify-between gap-2.5 shrink-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <img
-            src="/assets/logo.jpg"
-            alt={t.hospitalName}
-            className="w-10 h-10 object-contain rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-white shadow-xs shrink-0"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src =
-                'https://ui-avatars.com/api/?name=MIH&background=0f766e&color=fff';
-            }}
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white leading-tight truncate">
-                {t.hospitalName}
-              </h3>
-              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-200 dark:border-red-900 shrink-0 font-mono">
-                MIH
-              </span>
-            </div>
-            <p className="text-[11px] text-teal-700 dark:text-teal-400 font-bold truncate mt-0.5">
-              {t.deptGuide} ({policies.length} {isEn ? 'Policies' : 'سياسة'})
-            </p>
+      {/* 1. Header (Only on Mobile Drawer view to provide title & close button) */}
+      {isMobileView && (
+        <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black text-slate-900 dark:text-white">
+              {isEn ? 'Quality Standards & Depts' : 'أقسام ومعايير الجودة'}
+            </span>
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 font-mono">
+              MIH
+            </span>
           </div>
-        </div>
 
-        {/* Close Button only for mobile drawer view */}
-        {isMobileView && (
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-sm transition cursor-pointer border border-slate-200 dark:border-slate-700 active:scale-95 shrink-0"
+            className="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-sm transition cursor-pointer active:scale-95 shrink-0"
             title={t.close}
             aria-label={t.close}
           >
             ✕
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* 2. Main Navigation Quick Bar */}
-      {onNavigateTab && (
-        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/50 flex items-center gap-1 overflow-x-auto custom-scroll shrink-0">
+      {/* 2. Top Action Buttons: Bookmarks (مفضلاتي) + Admin (لوحة الإدارة if authorized) + Home Button */}
+      <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 space-y-2 shrink-0">
+        <div className="flex items-center gap-2">
+          {/* زر مفضلاتي - يظهر لجميع المستخدمين */}
           <button
             type="button"
             onClick={() => {
-              onNavigateTab('home');
+              handleBookmarksClick();
               if (isMobileView) onClose();
             }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-              currentTab === 'home'
-                ? 'bg-teal-700 text-white shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-teal-950'
+            className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 border shadow-2xs active:scale-95 ${
+              selectedCategory === 'BOOKMARKS'
+                ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40'
             }`}
+            title={t.bookmarks}
           >
-            🏠 {t.navHome}
+            <span className="text-sm">❤️</span>
+            <span>{isEn ? 'Bookmarks' : 'مفضلاتي'}</span>
+            {bookmarkedIds.length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  selectedCategory === 'BOOKMARKS'
+                    ? 'bg-white text-rose-700'
+                    : 'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200'
+                }`}
+              >
+                {bookmarkedIds.length}
+              </span>
+            )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              onNavigateTab('policies');
-              if (isMobileView) onClose();
-            }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-              currentTab === 'policies'
-                ? 'bg-teal-700 text-white shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-teal-950'
-            }`}
-          >
-            📚 {t.navPolicies}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onNavigateTab('bundles');
-              if (isMobileView) onClose();
-            }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-              currentTab === 'bundles'
-                ? 'bg-teal-700 text-white shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-teal-950'
-            }`}
-          >
-            📋 {t.navBundles}
-          </button>
-
-          {isAuthorizedAdmin && (
+          {/* زر لوحة الإدارة - يظهر فقط في حالة كان المستخدم مسجل دخول كمدير مصرح */}
+          {currentUser && isAuthorizedAdmin && onNavigateTab && (
             <button
               type="button"
               onClick={() => {
                 onNavigateTab('admin');
                 if (isMobileView) onClose();
               }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs border active:scale-95 ${
                 currentTab === 'admin'
-                  ? 'bg-red-800 text-white shadow-2xs'
-                  : 'bg-red-700 hover:bg-red-800 text-white'
+                  ? 'bg-red-800 text-white border-red-900 shadow-xs'
+                  : 'bg-red-700 hover:bg-red-800 text-white border-red-800'
               }`}
+              title={t.navAdmin}
             >
-              ⚡ {t.navAdmin}
+              <span>⚡</span>
+              <span>{isEn ? 'Admin' : 'لوحة الإدارة'}</span>
             </button>
           )}
         </div>
-      )}
 
-      {/* 3. Hospital Departments Search & Header */}
-      <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-            <span>📁</span>
-            <span>{t.deptDirectory}</span>
-          </span>
+        {/* زر العودة للصفحة الرئيسية */}
+        {onNavigateTab && (
           <button
             type="button"
             onClick={() => {
+              onNavigateTab('home');
               if (onSelectCategory) onSelectCategory('ALL');
               if (isMobileView) onClose();
             }}
-            className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
-              selectedCategory === 'ALL'
-                ? 'bg-teal-700 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-teal-50'
+            className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              currentTab === 'home' && selectedCategory !== 'BOOKMARKS'
+                ? 'bg-teal-700 text-white shadow-2xs'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
             }`}
           >
-            {isEn ? 'All (101)' : 'الكل (101)'}
+            <span>🏠</span>
+            <span>{isEn ? 'Home Overview' : 'الصفحة الرئيسية للمستشفى'}</span>
           </button>
-        </div>
-
-        <div className="relative">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={isEn ? 'Filter departments...' : 'تصفية أقسام المستشفى...'}
-            className="w-full pl-7 pr-3 py-1.5 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-500 outline-none font-medium"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
-              className={`absolute ${isEn ? 'right-2' : 'left-2'} top-1.5 text-xs text-slate-400 hover:text-slate-600 cursor-pointer`}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* 4. Departments List (أقسام المستشفى الـ 12) */}
+      {/* 3. Section Title: أقسام ومعايير الجودة */}
+      <div className="px-3.5 pt-3 pb-1 flex items-center justify-between text-slate-500 dark:text-slate-400 shrink-0">
+        <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+          <span>📂</span>
+          <span>{isEn ? 'Quality Standards & Depts' : 'أقسام ومعايير الجودة'}</span>
+        </h3>
+        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+          {policies.length} {isEn ? 'policies' : 'سياسة'}
+        </span>
+      </div>
+
+      {/* 4. Scrollable Categories List */}
       <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 custom-scroll">
+        
+        {/* Item 4.1: جميع السياسات المعتمدة (الكل) */}
+        <div
+          onClick={() => {
+            if (onNavigateTab) onNavigateTab('policies');
+            if (onSelectCategory) onSelectCategory('ALL');
+            if (isMobileView) onClose();
+          }}
+          className={`w-full p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 shadow-2xs group select-none ${
+            currentTab === 'policies' && selectedCategory === 'ALL'
+              ? 'bg-teal-700 text-white border-teal-800 dark:border-teal-600 shadow-xs'
+              : 'bg-white dark:bg-slate-900 hover:bg-teal-50/80 dark:hover:bg-teal-950/60 border-slate-200/80 dark:border-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 transition ${
+                currentTab === 'policies' && selectedCategory === 'ALL'
+                  ? 'bg-teal-800 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 group-hover:scale-105'
+              }`}
+            >
+              📚
+            </div>
+            <div className="min-w-0 truncate">
+              <span
+                className={`font-black text-xs block truncate leading-tight ${
+                  currentTab === 'policies' && selectedCategory === 'ALL'
+                    ? 'text-white'
+                    : 'text-slate-900 dark:text-white group-hover:text-teal-700 dark:group-hover:text-teal-300'
+                }`}
+              >
+                {isEn ? 'All Accredited Policies' : 'جميع السياسات المعتمدة (الكل)'}
+              </span>
+              <span
+                className={`text-[10px] font-semibold block mt-0.5 ${
+                  currentTab === 'policies' && selectedCategory === 'ALL'
+                    ? 'text-teal-100'
+                    : 'text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {isEn ? 'Comprehensive Directory' : 'الدليل الشامل للسياسات'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                currentTab === 'policies' && selectedCategory === 'ALL'
+                  ? 'bg-teal-800 text-teal-100'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              {policies.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Item 4.2: حزم مكافحة العدوى والوقاية (Clinical Care Bundles) */}
+        <div
+          onClick={() => {
+            if (onNavigateTab) onNavigateTab('bundles');
+            if (isMobileView) onClose();
+          }}
+          className={`w-full p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 shadow-2xs group select-none ${
+            currentTab === 'bundles'
+              ? 'bg-teal-700 text-white border-teal-800 dark:border-teal-600 shadow-xs'
+              : 'bg-white dark:bg-slate-900 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 border-slate-200/80 dark:border-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 transition ${
+                currentTab === 'bundles'
+                  ? 'bg-teal-800 text-white'
+                  : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 group-hover:scale-105'
+              }`}
+            >
+              📋
+            </div>
+            <div className="min-w-0 truncate">
+              <span
+                className={`font-black text-xs block truncate leading-tight ${
+                  currentTab === 'bundles'
+                    ? 'text-white'
+                    : 'text-slate-900 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400'
+                }`}
+              >
+                {isEn ? 'Infection Control Bundles' : 'حزم مكافحة العدوى والوقاية'}
+              </span>
+              <span
+                className={`text-[10px] font-semibold block mt-0.5 ${
+                  currentTab === 'bundles'
+                    ? 'text-teal-100'
+                    : 'text-emerald-700 dark:text-emerald-400'
+                }`}
+              >
+                {isEn ? 'CLABSI, VAP, CAUTI, SSI, Sepsis' : 'قوائم تدقيق الحزم الإكلينيكية'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                currentTab === 'bundles'
+                  ? 'bg-teal-800 text-teal-100'
+                  : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
+              }`}
+            >
+              {bundlesCount}
+            </span>
+          </div>
+        </div>
+
+        {/* Separator */}
+        <div className="pt-1.5 pb-0.5 px-2">
+          <div className="h-px bg-slate-200 dark:bg-slate-800" />
+        </div>
+
+        {/* Item 4.3: The 12 Hospital Quality Departments & Standards */}
         {categoriesOrder.map((catKey) => {
           const meta = CATEGORY_META[catKey] || CATEGORY_META.QPI;
           const catTrans = CATEGORY_TRANSLATIONS[lang]?.[catKey] || {
             name: meta.name,
-            desc: meta.desc
+            desc: meta.desc,
           };
           const catPolicies = groupedPolicies[catKey] || [];
-          const isSelected = selectedCategory === catKey;
-
-          if (searchTerm && catPolicies.length === 0) {
-            return null;
-          }
+          const isSelected = currentTab === 'policies' && selectedCategory === catKey;
 
           return (
             <div
               key={catKey}
               onClick={() => {
-                if (onSelectCategory) {
-                  onSelectCategory(catKey);
-                }
+                if (onNavigateTab) onNavigateTab('policies');
+                if (onSelectCategory) onSelectCategory(catKey);
                 if (isMobileView) onClose();
               }}
               className={`w-full p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 shadow-2xs group select-none ${
@@ -321,7 +393,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
         })}
       </div>
 
-      {/* 5. User Login / Admin Status Section (تسجيل الدخول / حظر المدير) */}
+      {/* 5. User Login / Admin Status Section */}
       <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/90 space-y-2.5 shrink-0">
         <div className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
           <span>{isEn ? 'ADMIN & AUTH' : 'تسجيل الدخول والإدارة'}</span>
@@ -357,7 +429,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
                 if (onLogout) onLogout();
                 if (isMobileView) onClose();
               }}
-              className="w-full py-1.5 px-3 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/80 dark:hover:bg-red-900 text-red-700 dark:text-red-300 font-bold text-xs transition cursor-pointer text-center border border-red-200 dark:border-red-900"
+              className="w-full py-1.5 px-3 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/80 dark:hover:bg-red-900 dark:text-red-300 font-bold text-xs transition cursor-pointer text-center border border-red-200 dark:border-red-900"
             >
               {t.logout}
             </button>
@@ -422,10 +494,20 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                   : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
               }`}
-              title={darkMode ? (isEn ? 'Switch to Light Mode' : 'تفعيل الوضع النهاري') : (isEn ? 'Switch to Night Mode' : 'تفعيل الوضع الليلي')}
+              title={
+                darkMode
+                  ? isEn
+                    ? 'Switch to Light Mode'
+                    : 'تفعيل الوضع النهاري'
+                  : isEn
+                  ? 'Switch to Night Mode'
+                  : 'تفعيل الوضع الليلي'
+              }
             >
               <span>{darkMode ? '☀️' : '🌙'}</span>
-              <span className="text-[11px] font-black">{darkMode ? (isEn ? 'Light' : 'نهاري') : (isEn ? 'Dark' : 'ليلي')}</span>
+              <span className="text-[11px] font-black">
+                {darkMode ? (isEn ? 'Light' : 'نهاري') : isEn ? 'Dark' : 'ليلي'}
+              </span>
             </button>
           )}
         </div>
@@ -435,11 +517,11 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
 
   return (
     <>
-      {/* A. Permanent Desktop Sidebar (Always Visible on screens >= lg) */}
+      {/* A. Permanent Full-Page Desktop Sidebar (Always Visible on screens >= lg) */}
       <aside
         className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[57px] h-[calc(100vh-57px)] border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs z-30 transition-colors"
         dir={isEn ? 'ltr' : 'rtl'}
-        aria-label={t.deptGuide}
+        aria-label="قائمة أقسام ومعايير الجودة"
       >
         {renderSidebarContent(false)}
       </aside>
@@ -455,7 +537,9 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
 
           {/* Mobile Drawer Panel */}
           <div
-            className={`fixed inset-y-0 ${isEn ? 'left-0 border-r' : 'right-0 border-l'} z-50 w-80 sm:w-88 max-w-[85vw] bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out`}
+            className={`fixed inset-y-0 ${
+              isEn ? 'left-0 border-r' : 'right-0 border-l'
+            } z-50 w-80 sm:w-88 max-w-[85vw] bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out`}
             dir={isEn ? 'ltr' : 'rtl'}
           >
             {renderSidebarContent(true)}
@@ -465,4 +549,3 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     </>
   );
 };
-

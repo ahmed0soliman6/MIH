@@ -61,32 +61,54 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
     return map;
   }, [policies, searchTexts]);
 
+  const isBookmarksCategory = selectedCategory === 'BOOKMARKS';
+
   const filtered = useMemo(
     () =>
       policies.filter((p) => {
         const isManual = isManualPolicy(p);
         const isFav = bookmarkedIds.includes(p.id);
 
-        if (sourceFilter === 'BOOKMARKS' && !isFav) return false;
-        if (sourceFilter === 'MANUAL' && !isManual) return false;
-        if (sourceFilter === 'CORE' && isManual) return false;
+        const inBookmarksMode = isBookmarksCategory || sourceFilter === 'BOOKMARKS';
+        if (inBookmarksMode && !isFav) return false;
 
-        const matchCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
+        if (!inBookmarksMode) {
+          if (sourceFilter === 'MANUAL' && !isManual) return false;
+          if (sourceFilter === 'CORE' && isManual) return false;
+        }
+
+        const matchCategory =
+          selectedCategory === 'ALL' ||
+          selectedCategory === 'BOOKMARKS' ||
+          p.category === selectedCategory;
         const matchQuery = !normalizedQuery || (searchIndex.get(p.id) || '').includes(normalizedQuery);
         return matchCategory && matchQuery;
       }),
-    [policies, sourceFilter, bookmarkedIds, selectedCategory, normalizedQuery, searchIndex]
+    [policies, sourceFilter, isBookmarksCategory, bookmarkedIds, selectedCategory, normalizedQuery, searchIndex]
   );
 
   return (
     <section className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-            {isEn ? 'Accredited Quality Policies Library' : 'مكتبة سياسات الجودة المعتمدة'}
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            {isBookmarksCategory && <span>❤️</span>}
+            <span>
+              {isBookmarksCategory
+                ? isEn
+                  ? 'My Bookmarked Policies'
+                  : 'مفضلاتي (السياسات المحفوظة)'
+                : isEn
+                ? 'Accredited Quality Policies Library'
+                : 'مكتبة سياسات الجودة المعتمدة'}
+            </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
-            {isEn
+            {isBookmarksCategory
+              ? isEn
+                ? 'Quick access to your saved clinical policies and procedures'
+                : 'الوصول السريع لجميع السياسات والإجراءات الطبية التي قمت بحفظها'
+              : isEn
               ? 'Browse, read, and bookmark accredited clinical policies or launch interactive presentation slides'
               : 'تصفح وقراءة وحفظ السياسات المعتمدة في مفضلتك أو تشغيلها في وضع العرض التقديمي'}
           </p>

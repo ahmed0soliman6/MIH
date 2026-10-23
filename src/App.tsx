@@ -117,9 +117,21 @@ export const App: React.FC = () => {
   };
 
   const handleOpenBookmarks = () => {
+    setSelectedCategory('BOOKMARKS');
     setCurrentTab('policies');
-    setSelectedCategory('ALL');
     setSearchQuery('');
+  };
+
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q);
+    if (q.trim()) {
+      if (currentTab !== 'policies') {
+        setCurrentTab('policies');
+      }
+      if (!searchTexts) {
+        loadSearchTexts().then(setSearchTexts).catch(() => {});
+      }
+    }
   };
 
   // Search & filter state
@@ -757,31 +769,26 @@ export const App: React.FC = () => {
       <Navbar
         currentTab={currentTab}
         onTabChange={handleTabChange}
-        policiesCount={policies.length}
-        bundlesCount={bundles.length}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onLogin={handleOpenLogin}
-        onLogout={handleLogout}
-        isAuthorizedAdmin={isAuthorizedAdmin}
-        currentUser={currentUser}
-        isFirebaseConnected={isFirebaseConnected}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode((prev) => !prev)}
+        selectedCategory={selectedCategory}
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
         activeReadingPolicy={activeDocPolicy}
         onBackFromReading={() => setActiveDocPolicy(null)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode((prev) => !prev)}
         lang={lang}
         onToggleLanguage={toggleLanguage}
-        bookmarksCount={bookmarkedIds.length}
-        onOpenBookmarks={handleOpenBookmarks}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Body Container: Permanent Sidebar + Main Content */}
-      <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
+      {/* Body Container: Permanent Full-Height Sidebar + Centered Main Content */}
+      <div className="flex-1 flex w-full">
         <DepartmentSidebar
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           policies={policies}
+          bundlesCount={bundles.length}
           onSelectPolicy={handleOpenDocument}
           onLaunchPresentation={handleOpenPresentation}
           onSelectCategory={handleSelectCategory}
@@ -798,10 +805,11 @@ export const App: React.FC = () => {
           onToggleLanguage={toggleLanguage}
           bookmarkedIds={bookmarkedIds}
           onToggleBookmark={toggleBookmark}
+          onOpenBookmarks={handleOpenBookmarks}
         />
 
         {/* Main Views Container */}
-        <main className="flex-1 min-w-0 px-3 sm:px-5 lg:px-8 py-6 space-y-8">
+        <main className="flex-1 min-w-0 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-8">
           {initialLoadError && (
             <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-center space-y-3">
               <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
