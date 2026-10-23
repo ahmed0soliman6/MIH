@@ -93,8 +93,8 @@ interface AdminViewProps {
   onAddAdmin?: (email: string, role: AdminRole) => Promise<void>;
   onRemoveAdmin?: (email: string) => Promise<void>;
   onUpdateAdminRole?: (email: string, role: AdminRole) => Promise<void>;
-  publishStatus?: 'idle' | 'pending' | 'publishing' | 'published' | 'error';
-  onTriggerPublishNow?: () => void;
+  publishStatus?: any;
+  onTriggerPublishNow?: (keepalive?: boolean) => Promise<boolean | void>;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -116,33 +116,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onAddAdmin,
   onRemoveAdmin,
   onUpdateAdminRole,
-  publishStatus = 'idle',
+  publishStatus,
   onTriggerPublishNow,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
-
-  // حالة طي وفتح البطاقات المنفصلة (Collapsible Accordion Cards)
-  const [openCards, setOpenCards] = useState<{
-    admins: boolean;
-    converter: boolean;
-    editor: boolean;
-  }>({
-    admins: true,      // مفتوحة لسهولة إدارة المستخدمين وتعديل الأدوار
-    converter: false,  // مطوية لتنظيم المساحة وتفتح بضغطة زر
-    editor: true,      // مفتوحة للتحرير والمعاينة
-  });
-
-  const toggleCard = (cardKey: 'admins' | 'converter' | 'editor') => {
-    setOpenCards((prev) => ({ ...prev, [cardKey]: !prev[cardKey] }));
-  };
-
-  useEffect(() => {
-    if (editingPolicy) {
-      setOpenCards((prev) => ({ ...prev, editor: true }));
-    }
-  }, [editingPolicy]);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -172,7 +151,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [pdfStartPage, setPdfStartPage] = useState<number>(1);
   const [pdfEndPage, setPdfEndPage] = useState<number>(5);
 
-  // إدارة المديرين (superadmin فقط)
+  // إدارة المديرين (superadmin فقط؛ تُفرض فعلياً بقواعد Firestore)
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminRole, setNewAdminRole] = useState<AdminRole>('editor');
   const isSuperAdmin = adminRole === 'superadmin';
@@ -203,17 +182,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
     if (!confirm(`هل أنت متأكد من رغبتك في إزالة (${emailToRemove}) من مديري الجودة؟`)) return;
     await onRemoveAdmin(emailToRemove);
-  };
-
-  const handleRoleChange = async (targetEmail: string, newRole: AdminRole) => {
-    if (!onUpdateAdminRole) return;
-    if (targetEmail.toLowerCase() === currentUserEmail.trim().toLowerCase() && newRole !== 'superadmin') {
-      const confirmSelf = confirm(
-        '⚠️ تحذير: أنت على وشك خفض صلاحيات حسابك الشخصي من مدير عام (superadmin). لن تتمكن بعدها من إضافة أو ترقية مدراء آخرين. هل أنت متأكد؟'
-      );
-      if (!confirmSelf) return;
-    }
-    await onUpdateAdminRole(targetEmail, newRole);
   };
 
   const loadPolicy = (p: Policy) => {
@@ -689,257 +657,101 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span>🔄</span>
             <span>استعادة الافتراضي</span>
           </button>
-
-          {/* Publish Status Indicator */}
-          {publishStatus && (
-            <div className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 shadow-xs transition ${
-              publishStatus === 'pending'
-                ? 'bg-amber-50 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
-                : publishStatus === 'publishing'
-                ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 animate-pulse'
-                : publishStatus === 'published'
-                ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
-                : publishStatus === 'error'
-                ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200'
-                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}>
-              {publishStatus === 'pending' && <span>⏳ سيُنشر تلقائياً خلال لحظات...</span>}
-              {publishStatus === 'publishing' && <span>🚀 جاري النشر وبناء النسخة الجديدة...</span>}
-              {publishStatus === 'published' && <span>✅ منشور ومتاح للزوار</span>}
-              {publishStatus === 'error' && <span>⚠️ تعذر النشر التلقائي</span>}
-              {publishStatus === 'idle' && <span>☁️ النظام متزامن</span>}
-
-              {onTriggerPublishNow && (
-                <button
-                  type="button"
-                  onClick={onTriggerPublishNow}
-                  disabled={publishStatus === 'publishing'}
-                  className="px-2.5 py-0.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-black text-[11px] cursor-pointer shadow-xs disabled:opacity-50"
-                  title="نشر التعديلات فوراً عبر Vercel Deploy Hook وتجاوز وقت الانتظار"
-                >
-                  نشر الآن
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Card 0: Admin Whitelist & Roles Management (بطاقة مستقلة وقابلة للطي) */}
+      {/* Card 0: Admin Whitelist Management (User Requested Feature) */}
       {canSeeAdmins && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-teal-500/30 dark:border-teal-500/20 shadow-md overflow-hidden transition-all duration-300">
-          {/* Card Header (Clickable Accordion) */}
-          <div
-            onClick={() => toggleCard('admins')}
-            className="p-5 sm:p-6 bg-gradient-to-r from-teal-50/80 via-white to-slate-50/70 dark:from-teal-950/30 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-teal-50/90 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-                👥
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                    إدارة مديري الجودة وصلاحيات الحسابات
-                  </h3>
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700">
-                    {adminList.length} أعضاء
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                  التحكم في أدوار الفريق وترقية وتعيين المشرفين (Superadmin / Admin / Editor) مباشرة
-                </p>
-              </div>
+        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span>👥</span>
+                <span>إدارة مديري الجودة والأدوار</span>
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                الأدوار: <b>editor</b> يحرر السياسات — <b>admin</b> يحذف ويرى القائمة — <b>superadmin</b> يدير المديرين. الصلاحيات تُفرض في قواعد Firestore وليس في الواجهة.
+              </p>
             </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <span className="text-xs font-bold text-teal-700 dark:text-teal-400 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-100/60 dark:bg-teal-900/40">
-                <span>{openCards.admins ? 'طي البطاقة' : 'فتح وإدارة الصلاحيات'}</span>
-                <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.admins ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                  ▼
-                </span>
-              </span>
-            </div>
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
+              {adminList.length} مديرين
+            </span>
           </div>
 
-          {/* Card Body */}
-          {openCards.admins && (
-            <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-              {/* Role explanation */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-wrap gap-4 text-xs font-medium text-slate-700 dark:text-slate-300">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">👑</span>
-                  <span className="font-bold text-slate-900 dark:text-white">superadmin (مدير عام):</span>
-                  <span>كافة الصلاحيات + إضافة وتعديل وترقية وإزالة المدراء.</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">🛡️</span>
-                  <span className="font-bold text-slate-900 dark:text-white">admin (مدير):</span>
-                  <span>إضافة وتعديل وحذف السياسات ومراجعة الوثائق.</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">✏️</span>
-                  <span className="font-bold text-slate-900 dark:text-white">editor (محرر):</span>
-                  <span>إضافة وتعديل مسودات السياسات فقط بدون صلاحية الحذف.</span>
-                </div>
-              </div>
-
-              {/* Add New Admin Form (Superadmin only) */}
-              {isSuperAdmin ? (
-                <div className="p-4 sm:p-5 rounded-2xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800/60 space-y-3">
-                  <h4 className="text-xs sm:text-sm font-black text-teal-950 dark:text-teal-200 flex items-center gap-1.5">
-                    <span>➕</span>
-                    <span>اعتماد أو إضافة مستخدم جديد:</span>
-                  </h4>
-                  <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2.5">
-                    <input
-                      type="email"
-                      inputMode="email"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      dir="ltr"
-                      value={newAdminEmail}
-                      onChange={(e) => setNewAdminEmail(e.target.value)}
-                      placeholder="name@gmail.com"
-                      className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none shadow-sm"
-                    />
-                    <select
-                      value={newAdminRole}
-                      onChange={(e) => setNewAdminRole(e.target.value as AdminRole)}
-                      className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white outline-none shadow-sm cursor-pointer"
-                    >
-                      <option value="editor">✏️ editor (محرر)</option>
-                      <option value="admin">🛡️ admin (مدير)</option>
-                      <option value="superadmin">👑 superadmin (مدير عام)</option>
-                    </select>
-                    <button
-                      type="submit"
-                      className="px-6 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm cursor-pointer shrink-0"
-                    >
-                      <span>➕</span>
-                      <span>اعتماد المستخدم</span>
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  ℹ️ إضافة وتعديل صلاحيات المديرين متاحة لحساب المدير العام (superadmin) فقط.
-                </p>
-              )}
-
-              {/* Admins Interactive List */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300">
-                  قائمة الحسابات المعتمدة (يمكنك تغيير الدور مباشرة من القائمة):
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {adminList.map((a) => {
-                    const isSelf = a.email.toLowerCase() === currentUserEmail.trim().toLowerCase();
-                    return (
-                      <div
-                        key={a.email}
-                        className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                          isSelf
-                            ? 'bg-teal-50/40 dark:bg-teal-950/20 border-teal-300 dark:border-teal-700 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-xl shrink-0">
-                            {a.role === 'superadmin' ? '👑' : a.role === 'admin' ? '🛡️' : '✏️'}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate" dir="ltr">
-                                {a.email}
-                              </span>
-                              {isSelf && (
-                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-teal-600 text-white shrink-0">
-                                  أنت
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
-                              {a.role === 'superadmin' ? 'مدير عام بصلاحيات كاملة' : a.role === 'admin' ? 'مدير سياسات معتمد' : 'محرر ومراجع سياسات'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Interactive Role Switcher for Superadmin */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          {isSuperAdmin ? (
-                            <select
-                              value={a.role}
-                              onChange={(e) => handleRoleChange(a.email, e.target.value as AdminRole)}
-                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer focus:ring-2 focus:ring-teal-500 shadow-xs"
-                              title="تغيير وترقية نوع الحساب مباشرة"
-                            >
-                              <option value="editor">✏️ محرر (editor)</option>
-                              <option value="admin">🛡️ مدير (admin)</option>
-                              <option value="superadmin">👑 مدير عام (superadmin)</option>
-                            </select>
-                          ) : (
-                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                              {a.role}
-                            </span>
-                          )}
-
-                          {isSuperAdmin && !isSelf && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAdminEmail(a.email)}
-                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 p-1.5 rounded-lg transition cursor-pointer"
-                              title="إلغاء اعتماد هذا المدير"
-                            >
-                              <span className="text-sm font-bold">✕</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+          {isSuperAdmin ? (
+            <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                dir="ltr"
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                placeholder="name@gmail.com"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
+              />
+              <select
+                value={newAdminRole}
+                onChange={(e) => setNewAdminRole(e.target.value as AdminRole)}
+                className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white outline-none"
+              >
+                <option value="editor">editor (محرر)</option>
+                <option value="admin">admin (مدير)</option>
+                <option value="superadmin">superadmin (مدير عام)</option>
+              </select>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+              >
+                <span>➕</span>
+                <span>اعتماد مدير</span>
+              </button>
+            </form>
+          ) : (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+              إدارة المديرين (إضافة/حذف) متاحة لدور superadmin فقط.
+            </p>
           )}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {adminList.map((a) => (
+              <div
+                key={a.email}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <span>{a.role === 'superadmin' ? '👑' : a.role === 'admin' ? '🛡️' : '✏️'}</span>
+                <span className="font-mono" dir="ltr">{a.email}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">{a.role}</span>
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAdminEmail(a.email)}
+                    className="text-slate-400 hover:text-red-500 font-bold p-0.5 rounded transition cursor-pointer"
+                    title="إزالة هذا المدير"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Card 1: Smart AI Upload Engine (بطاقة مستقلة وقابلة للطي) */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-indigo-200 dark:border-indigo-900/40 shadow-sm overflow-hidden transition-all duration-300">
-        {/* Card Header (Clickable Accordion) */}
-        <div
-          onClick={() => toggleCard('converter')}
-          className="p-5 sm:p-6 bg-gradient-to-r from-indigo-50/60 via-white to-slate-50/50 dark:from-indigo-950/20 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-indigo-50/80 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-        >
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-              🚀
-            </div>
-            <div className="space-y-0.5">
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>محرك الرفع والتحويل الذكي (Smart AI Converter)</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                استخراج المحتوى آلياً من ملفات Word أو PDF أو PowerPoint أو الصور وتحويلها لسياسات وشرائح
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-100/60 dark:bg-indigo-900/40">
-              <span>{openCards.converter ? 'طي البطاقة' : 'فتح أدوات التحويل والرفع'}</span>
-              <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.converter ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                ▼
-              </span>
-            </span>
-          </div>
+      {/* Card 1: Smart AI Upload Engine */}
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+        <div>
+          <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span>🚀</span>
+            <span>محرك الرفع والتحويل الذكي (Smart AI Converter)</span>
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+            اختر ملف Word أو PDF أو عرض PowerPoint أو صورة لاستخراج محتواها وتحويلها لسياسة وشرائح تلقائياً
+          </p>
         </div>
 
-        {openCards.converter && (
-          <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-            {/* Universal Fast Converter Banner */}
+        {/* Universal Fast Converter Banner */}
         <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-teal-900 via-slate-900 to-indigo-950 text-white border border-teal-500/40 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-3xl p-2 rounded-2xl bg-teal-500/20 border border-teal-500/30 shrink-0">🎯</span>
@@ -1129,51 +941,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
         )}
-          </div>
-        )}
       </div>
 
-      {/* Card 2: Policy Editor & Preview (بطاقة مستقلة وقابلة للطي) */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300">
-        {/* Card Header (Clickable Accordion) */}
-        <div
-          onClick={() => toggleCard('editor')}
-          className="p-5 sm:p-6 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-800/40 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-        >
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-teal-700 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-              ✍️
-            </div>
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  محرر ومراجع السياسات ومنشئ العروض التقديمية
-                </h3>
-                {editingPolicy && (
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500 text-white">
-                    تعديل سياسة: {editingPolicy.code}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                تحرير وتنسيق الوثائق، وتعديل الشرائح، والمعاينة الحية الفورية بمحاكي المستندات والعرض
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200/60 dark:bg-slate-800">
-              <span>{openCards.editor ? 'طي المحرر' : 'فتح المحرر والمعاينة'}</span>
-              <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.editor ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                ▼
-              </span>
-            </span>
-          </div>
-        </div>
-
-        {openCards.editor && (
-          <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-            {/* Policy Quick Selector Banner */}
+      {/* Card 2: Policy Editor & Preview */}
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+        {/* Policy Quick Selector Banner */}
         {policies && policies.length > 0 && (
           <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -1724,8 +1496,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
           </div>
         )}
       </div>

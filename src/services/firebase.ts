@@ -19,7 +19,6 @@ import {
   getDoc,
   getDocs,
   setDoc,
-  updateDoc,
   deleteDoc,
   writeBatch,
   serverTimestamp,
@@ -202,7 +201,7 @@ async function commitInChunks(
   skipIds: Set<string>
 ): Promise<number> {
   const colRef = collection(db, 'policies');
-  const chunkSize = 8;
+  const chunkSize = 100;
   let saved = 0;
   const toWrite = policies.filter((p) => !p.id || !skipIds.has(p.id));
 
@@ -239,7 +238,7 @@ export async function seedFirestoreWithDefaults(
   try {
     const existing = await getDocs(collection(db, 'policies'));
     const skipIds = new Set<string>();
-    existing.forEach((d: QueryDocumentSnapshot<DocumentData>) => skipIds.add(d.id));
+    existing.forEach((d) => skipIds.add(d.id));
     const count = await commitInChunks(db, policies, updatedBy, skipIds);
     return { success: true, count, skipped: policies.length - count };
   } catch (err: any) {
@@ -323,7 +322,7 @@ export async function listAdmins(db: Firestore | null): Promise<AdminEntry[]> {
   try {
     const snaps = await getDocs(collection(db, 'admins'));
     const out: AdminEntry[] = [];
-    snaps.forEach((d: QueryDocumentSnapshot<DocumentData>) => {
+    snaps.forEach((d) => {
       const data = d.data();
       const role = VALID_ROLES.includes(data.role) ? (data.role as AdminRole) : 'editor';
       out.push({ email: (data.email || d.id).toString().toLowerCase(), role, name: data.name || '' });
@@ -346,16 +345,12 @@ export async function addAdminDoc(db: Firestore | null, email: string, role: Adm
   });
 }
 
-export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole): Promise<void> {
-  if (!db) throw new Error('Firestore غير متصل');
-  const clean = email.trim().toLowerCase();
-  await updateDoc(doc(db, 'admins', clean), {
-    role,
-    updated_at: serverTimestamp()
-  });
-}
-
 export async function deleteAdminDoc(db: Firestore | null, email: string): Promise<void> {
   if (!db) throw new Error('Firestore غير متصل');
   await deleteDoc(doc(db, 'admins', email.trim().toLowerCase()));
 }
+
+export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole, updatedBy: string = 'system'): Promise<void> {
+  return addAdminDoc(db, email, role, updatedBy);
+}
+

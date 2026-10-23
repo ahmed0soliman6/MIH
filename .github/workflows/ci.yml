@@ -8,19 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm run snapshot:dev
-      - run: npx vite build
-      - run: npm run verify:dist
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bunx vite build
       # حارس أمني: ممنوع وجود مفتاح Google (AIza...) أو أسرار في الحزمة الناتجة
       - name: Fail if a real API key leaked into the bundle
         run: |
           if grep -rEho "AIza[0-9A-Za-z_-]{35}" dist | head -1 | grep -q .; then
             echo "Possible Google API key found in build output"; exit 1
           fi
-

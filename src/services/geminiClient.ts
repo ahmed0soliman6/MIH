@@ -1,12 +1,11 @@
-import { loadFirebase } from './firebaseLoader';
+import { getCurrentIdToken } from './firebase';
 
 /**
  * استدعاء Gemini عبر الوكيل الآمن /api/gemini (المفتاح على الخادم فقط).
  * يعيد Response بنفس واجهة fetch حتى تبقى منطقيات المعالجة كما هي.
  */
 export async function callGemini(model: string, body: unknown): Promise<Response> {
-  const fb = await loadFirebase();
-  const token = await fb.getCurrentIdToken();
+  const token = await getCurrentIdToken();
   if (!token) {
     throw new Error('سجّل الدخول بحساب مدير معتمد لاستخدام التحويل الذكي (Gemini).');
   }

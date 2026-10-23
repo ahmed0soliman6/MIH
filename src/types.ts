@@ -35,8 +35,6 @@ export interface Policy {
   created_at?: string;
   updated_at?: string;
   author_email?: string;
-  _summary?: boolean;
-  _file?: string;
   [key: string]: any;
 }
 

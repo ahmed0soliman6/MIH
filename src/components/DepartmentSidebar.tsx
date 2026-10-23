@@ -89,18 +89,32 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
   const renderSidebarContent = (isMobileView = false) => (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 select-none">
       
-      {/* 1. Header (Only on Mobile Drawer view to provide title & close button) */}
-      {isMobileView && (
-        <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-black text-slate-900 dark:text-white">
-              {isEn ? 'Quality Standards & Depts' : 'أقسام ومعايير الجودة'}
-            </span>
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 font-mono">
-              MIH
-            </span>
+      {/* 1. Hospital Identity Header: Logo + Hospital Name (Always at top of sidebar) */}
+      <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center justify-between gap-2.5 shrink-0">
+        <div
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+          onClick={() => {
+            if (onNavigateTab) onNavigateTab('home');
+            if (onSelectCategory) onSelectCategory('ALL');
+            if (isMobileView) onClose();
+          }}
+          title={isEn ? 'Mansoura International Hospital' : 'مستشفى المنصورة الدولي'}
+        >
+          {/* Hospital Logo Emblem */}
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-600 to-teal-800 text-white flex items-center justify-center text-xl shadow-sm border border-teal-500/40 shrink-0 select-none">
+            🏥
           </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate leading-tight tracking-tight">
+              {isEn ? 'Mansoura Int. Hospital' : 'مستشفى المنصورة الدولي'}
+            </h1>
+            <p className="text-[10px] font-bold text-teal-700 dark:text-teal-400 truncate mt-0.5">
+              {isEn ? 'Specialized Medical Centers' : 'أمانة المراكز الطبية المتخصصة'}
+            </p>
+          </div>
+        </div>
 
+        {isMobileView && (
           <button
             type="button"
             onClick={onClose}
@@ -110,8 +124,8 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
           >
             ✕
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 2. Top Action Buttons: Bookmarks (مفضلاتي) + Admin (لوحة الإدارة if authorized) + Home Button */}
       <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 space-y-2 shrink-0">
@@ -519,7 +533,7 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     <>
       {/* A. Permanent Full-Page Desktop Sidebar (Always Visible on screens >= lg) */}
       <aside
-        className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-[57px] h-[calc(100vh-57px)] border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs z-30 transition-colors"
+        className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 sticky top-0 h-screen border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm z-30 transition-colors"
         dir={isEn ? 'ltr' : 'rtl'}
         aria-label="قائمة أقسام ومعايير الجودة"
       >
