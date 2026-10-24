@@ -17,7 +17,10 @@ build
 
 # AI Studio / Editor cache
 .aistudio
-.DS_Store
+public/assets/aistudio/
+public/assets/aistudio/*
+*.zip
+Screenshot*
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -27,6 +30,7 @@ yarn-error.log*
 .vercel
 *.local
 
-# Static snapshot & backups
+
+# generated snapshot / backups
 public/data/
 backups/

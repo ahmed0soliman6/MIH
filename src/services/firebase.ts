@@ -199,12 +199,14 @@ async function commitInChunks(
   db: Firestore,
   policies: Policy[],
   updatedBy: string,
-  skipIds: Set<string>
+  skipIds: Set<string>,
+  onProgress?: (progress: { current: number; total: number; percent: number }) => void
 ): Promise<number> {
   const colRef = collection(db, 'policies');
-  const chunkSize = 8;
+  const chunkSize = 200; // دفعات آمنة تحت حد 500 في Firestore
   let saved = 0;
   const toWrite = policies.filter((p) => !p.id || !skipIds.has(p.id));
+  const total = toWrite.length;
 
   for (let i = 0; i < toWrite.length; i += chunkSize) {
     const chunk = toWrite.slice(i, i + chunkSize);
@@ -217,6 +219,10 @@ async function commitInChunks(
     }
     await batch.commit();
     saved += chunk.length;
+    if (onProgress) {
+      const percent = total > 0 ? Math.round((saved / total) * 100) : 100;
+      onProgress({ current: saved, total, percent });
+    }
   }
   return saved;
 }
@@ -239,7 +245,7 @@ export async function seedFirestoreWithDefaults(
   try {
     const existing = await getDocs(collection(db, 'policies'));
     const skipIds = new Set<string>();
-    existing.forEach((d: QueryDocumentSnapshot<DocumentData>) => skipIds.add(d.id));
+    existing.forEach((d: QueryDocumentSnapshot) => skipIds.add(d.id));
     const count = await commitInChunks(db, policies, updatedBy, skipIds);
     return { success: true, count, skipped: policies.length - count };
   } catch (err: any) {
@@ -248,19 +254,39 @@ export async function seedFirestoreWithDefaults(
   }
 }
 
-/** استيراد دفعة سياسات: يكتب (ويحدّث) السياسات المستوردة عمداً. */
+/** استيراد دفعة سياسات ذكي: دمج (Upsert) بالحفاظ على البيانات الوصفية وحساب المضاف والمحدّث */
 export async function upsertPoliciesBatch(
   db: Firestore | null,
   policies: Policy[],
-  updatedBy: string
-): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!db) return { success: false, count: 0, error: 'قاعدة بيانات Firestore غير متصلة' };
+  updatedBy: string,
+  onProgress?: (progress: { current: number; total: number; percent: number }) => void
+): Promise<{ success: boolean; count: number; addedCount: number; updatedCount: number; error?: string }> {
+  if (!db) return { success: false, count: 0, addedCount: 0, updatedCount: 0, error: 'قاعدة بيانات Firestore غير متصلة' };
   try {
-    const count = await commitInChunks(db, policies, updatedBy, new Set());
-    return { success: true, count };
+    // جلب المعرفات الحالية لتحديد المضاف مقابل المحدث
+    let existingIds = new Set<string>();
+    try {
+      const existingSnap = await getDocs(collection(db, 'policies'));
+      existingSnap.forEach((d: QueryDocumentSnapshot) => existingIds.add(d.id));
+    } catch (e) {
+      console.warn('Could not pre-fetch policy ids for added/updated counts, proceeding with merge:', e);
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    for (const p of policies) {
+      if (p.id && existingIds.has(p.id)) {
+        updatedCount++;
+      } else {
+        addedCount++;
+      }
+    }
+
+    const count = await commitInChunks(db, policies, updatedBy, new Set(), onProgress);
+    return { success: true, count, addedCount, updatedCount };
   } catch (err: any) {
     console.error('Error importing policies to Firestore:', err);
-    return { success: false, count: 0, error: friendlyFirestoreError(err) };
+    return { success: false, count: 0, addedCount: 0, updatedCount: 0, error: friendlyFirestoreError(err) };
   }
 }
 
@@ -323,7 +349,7 @@ export async function listAdmins(db: Firestore | null): Promise<AdminEntry[]> {
   try {
     const snaps = await getDocs(collection(db, 'admins'));
     const out: AdminEntry[] = [];
-    snaps.forEach((d: QueryDocumentSnapshot<DocumentData>) => {
+    snaps.forEach((d: QueryDocumentSnapshot) => {
       const data = d.data();
       const role = VALID_ROLES.includes(data.role) ? (data.role as AdminRole) : 'editor';
       out.push({ email: (data.email || d.id).toString().toLowerCase(), role, name: data.name || '' });
@@ -346,6 +372,11 @@ export async function addAdminDoc(db: Firestore | null, email: string, role: Adm
   });
 }
 
+export async function deleteAdminDoc(db: Firestore | null, email: string): Promise<void> {
+  if (!db) throw new Error('Firestore غير متصل');
+  await deleteDoc(doc(db, 'admins', email.trim().toLowerCase()));
+}
+
 export async function updateAdminRole(db: Firestore | null, email: string, role: AdminRole): Promise<void> {
   if (!db) throw new Error('Firestore غير متصل');
   const clean = email.trim().toLowerCase();
@@ -355,7 +386,3 @@ export async function updateAdminRole(db: Firestore | null, email: string, role:
   });
 }
 
-export async function deleteAdminDoc(db: Firestore | null, email: string): Promise<void> {
-  if (!db) throw new Error('Firestore غير متصل');
-  await deleteDoc(doc(db, 'admins', email.trim().toLowerCase()));
-}

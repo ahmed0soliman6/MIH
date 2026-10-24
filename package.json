@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "node scripts/export-policies.mjs && tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "tsc --noEmit",
     "export:policies": "node scripts/export-policies.mjs",
     "export:backup": "node scripts/export-policies.mjs --backup",
     "snapshot:dev": "npx --yes tsx scripts/make-dev-snapshot.ts",
-    "build": "node scripts/export-policies.mjs && tsc && vite build",
     "build:ci": "npm run snapshot:dev && tsc && vite build && npm run verify:dist",
-    "verify:dist": "node scripts/verify-dist.mjs",
-    "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "lint": "tsc --noEmit"
+    "verify:dist": "node scripts/verify-dist.mjs"
   },
   "dependencies": {
     "@types/jszip": "^3.4.0",
