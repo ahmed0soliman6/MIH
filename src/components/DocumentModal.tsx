@@ -4,6 +4,7 @@ import { CATEGORY_META } from '../data/meta';
 import { sanitizeHtml } from '../utils/sanitize';
 import { highlightHtmlText } from '../utils/arabic';
 import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 interface DocumentModalProps {
   policy: Policy | null;
@@ -30,31 +31,12 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   onToggleBookmark,
   searchQuery = '',
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
   const [readingProgress, setReadingProgress] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
-
-  // Strict Body Scroll Locking when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      const prevOverflow = document.body.style.overflow;
-      const prevTouchAction = document.body.style.touchAction;
-      const prevPosition = document.body.style.position;
-      const prevWidth = document.body.style.width;
-
-      document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
-
-      return () => {
-        document.body.style.overflow = prevOverflow;
-        document.body.style.touchAction = prevTouchAction;
-        document.body.style.position = prevPosition;
-        document.body.style.width = prevWidth;
-      };
-    }
-  }, [isOpen]);
 
   // Calculate highlighted HTML and match count
   const { renderedHtml, matchCount } = useMemo(() => {
@@ -141,7 +123,8 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
       aria-label={policy.title}
     >
       <div
-        className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 max-w-4xl w-full h-[94vh] sm:h-[92vh] shadow-2xl overflow-hidden flex flex-col transition-colors relative"
+        ref={dialogRef}
+        className="modal-enter bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 max-w-4xl w-full h-[94vh] sm:h-[92vh] shadow-2xl overflow-hidden flex flex-col transition-colors relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Toolbar */}
@@ -320,13 +303,13 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
                     {t.effectiveDate}
                   </td>
                   <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {policy.effectiveDate || '1/3/2025'}
+                    {policy.effectiveDate || '—'}
                   </td>
                   <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300">
                     {t.reviewDate}
                   </td>
                   <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {policy.reviewDate || '1/3/2028'}
+                    {policy.reviewDate || '—'}
                   </td>
                 </tr>
               </tbody>
@@ -336,7 +319,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
           {/* Purpose Box with Accent Bar */}
           <div className="p-4 rounded-xl bg-teal-50/90 dark:bg-teal-950/60 border-r-4 border-teal-600 dark:border-teal-400 text-teal-950 dark:text-teal-100 space-y-1.5 shadow-2xs relative overflow-hidden">
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-teal-600 dark:bg-teal-400 animate-ping inline-block no-print" />
+              <span className="w-2 h-2 rounded-full bg-teal-600 dark:bg-teal-400 inline-block no-print" />
               <h4 className="text-xs font-black text-teal-900 dark:text-teal-200 uppercase tracking-wide">
                 {t.purposeTitle}
               </h4>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SystemSettings } from '../types';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onClose,
   onGoogleLogin,
 }) => {
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
 
@@ -50,8 +52,19 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md w-full my-auto shadow-2xl p-6 sm:p-8 space-y-6 transition-colors">
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="تسجيل دخول إدارة الجودة"
+    >
+      <div
+        ref={dialogRef}
+        className="modal-enter bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md w-full my-auto shadow-2xl p-6 sm:p-8 space-y-6 transition-colors"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">

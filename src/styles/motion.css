@@ -1,0 +1,205 @@
+/* ===== Design & Motion System (MIH Quality Portal) ===== */
+
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 420ms;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 8px 28px rgb(15 118 110 / 0.16);
+}
+
+/* 1. Reveal Animation (Entry from bottom) */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--dur-slow) var(--ease-out-expo),
+              transform var(--dur-slow) var(--ease-out-expo);
+  will-change: opacity, transform;
+}
+
+.reveal.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger delay based on CSS variable --i */
+.stagger {
+  transition-delay: calc(min(var(--i, 0), 10) * 45ms);
+}
+
+/* 2. Interactive Card Lift */
+.card-lift {
+  transition: transform var(--dur-fast) var(--ease-out-expo),
+              box-shadow var(--dur-fast) var(--ease-out-expo),
+              border-color var(--dur-fast) ease;
+}
+
+@media (hover: hover) {
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+.card-lift:active {
+  transform: scale(0.985);
+}
+
+/* 3. High Performance Skeleton Shimmer */
+@keyframes skeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.6) 20%,
+    rgba(203, 213, 225, 0.85) 45%,
+    rgba(226, 232, 240, 0.6) 70%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.8s var(--ease-in-out) infinite;
+  border-radius: 0.5rem;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0.6) 20%,
+    rgba(51, 65, 85, 0.85) 45%,
+    rgba(30, 41, 59, 0.6) 70%
+  );
+  background-size: 200% 100%;
+}
+
+/* 4. Modal Transition Utilities */
+.modal-enter {
+  opacity: 0;
+  transform: scale(0.97) translateY(8px);
+  transition: opacity var(--dur-base) var(--ease-out-expo),
+              transform var(--dur-base) var(--ease-out-expo);
+}
+
+.modal-enter.is-active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.modal-exit {
+  opacity: 0;
+  transform: scale(0.97) translateY(8px);
+  transition: opacity var(--dur-fast) var(--ease-in-out),
+              transform var(--dur-fast) var(--ease-in-out);
+}
+
+/* 5. Toast Notification In */
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.toast-in {
+  animation: toastSlideIn var(--dur-base) var(--ease-out-expo) forwards;
+}
+
+/* 6. Card Rendering Performance Optimization */
+.policy-card-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 190px;
+}
+
+/* 7. View Transitions */
+::view-transition-old(root) {
+  animation: viewFadeOut 160ms ease-out;
+}
+
+::view-transition-new(root) {
+  animation: viewSlideFadeIn 240ms var(--ease-out-expo);
+}
+
+@keyframes viewFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes viewSlideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 8. Slide Transitions (RTL Aware) */
+.slide-enter-next {
+  animation: slideInNext var(--dur-base) var(--ease-out-expo) forwards;
+}
+
+.slide-enter-prev {
+  animation: slideInPrev var(--dur-base) var(--ease-out-expo) forwards;
+}
+
+@keyframes slideInNext {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInPrev {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 9. Reduced Motion Accessibility Protection (MANDATORY) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

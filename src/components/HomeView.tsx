@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Policy, Bundle, CategoryKey } from '../types';
 import { CATEGORY_META, isManualPolicy } from '../data/meta';
 import { TabType } from './Navbar';
+import { useCountUp } from '../hooks/useCountUp';
 
 interface HomeViewProps {
   policies: Policy[];
@@ -57,16 +58,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const featuredPolicies = policies.slice(0, 3);
   const featuredBundles = bundles.slice(0, 3);
 
+  const animatedPoliciesCount = useCountUp(policies.length);
+  const animatedBundlesCount = useCountUp(bundles.length);
+  const animatedCompliancePct = useCountUp(compliancePct);
+
   return (
     <section className="space-y-8">
       {/* Hero Banner with Mansoura International Hospital Building Background */}
       <div className="rounded-3xl p-6 sm:p-10 text-white shadow-xl relative overflow-hidden bg-slate-950 border border-slate-800">
-        {/* Hospital Building Photo - Prominently Displayed */}
-        <div
-          className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-65 transition-opacity"
-          style={{ backgroundImage: `url('/assets/hospital-bg.jpg')` }}
-          aria-hidden="true"
-        ></div>
+        {/* Hospital Building Photo - Prominently Displayed with WebP + JPG fallback and fetchpriority */}
+        <picture className="absolute inset-0 pointer-events-none opacity-65 transition-opacity" aria-hidden="true">
+          <source srcSet="/assets/hospital-bg.webp" type="image/webp" />
+          <img
+            src="/assets/hospital-bg.jpg"
+            alt=""
+            fetchPriority="high"
+            decoding="async"
+            className="w-full h-full object-cover object-center"
+          />
+        </picture>
 
         {/* Gradient overlay for crystal-clear readability while keeping building visible */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-slate-950/40 pointer-events-none"></div>
@@ -140,30 +150,30 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Quick Statistics (Crisp Dark Mode Contrast) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
+        <div className="card-lift bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
           <div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">إجمالي السياسات المعتمدة</p>
-            <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{policies.length}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{animatedPoliciesCount}</p>
           </div>
           <span className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center text-2xl font-bold">
             📚
           </span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
+        <div className="card-lift bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
           <div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">حزم الرعاية الإكلينيكية (Bundles)</p>
-            <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{bundles.length}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{animatedBundlesCount}</p>
           </div>
           <span className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/80 text-red-700 dark:text-red-300 flex items-center justify-center text-2xl font-bold">
             📋
           </span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
+        <div className="card-lift bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between transition-colors">
           <div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">متوسط الالتزام بالحزم</p>
-            <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{compliancePct}%</p>
+            <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{animatedCompliancePct}%</p>
           </div>
           <span className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-2xl font-bold">
             ✔
@@ -194,7 +204,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onFilterCategory(catKey);
                   onNavigateTab('policies');
                 }}
-                className="text-right p-5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-600 dark:hover:border-teal-400 hover:shadow-md transition bg-white dark:bg-slate-900 flex flex-col justify-between gap-3 group cursor-pointer"
+                className="card-lift text-right p-5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-600 dark:hover:border-teal-400 transition bg-white dark:bg-slate-900 flex flex-col justify-between gap-3 group cursor-pointer"
               >
                 <div className="flex items-center justify-between w-full">
                   <span className="text-3xl">{meta.icon}</span>

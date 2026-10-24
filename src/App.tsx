@@ -21,15 +21,16 @@ import { HomeView } from './components/HomeView';
 import { PoliciesView } from './components/PoliciesView';
 import { BundlesView } from './components/BundlesView';
 import { ArchitectureView } from './components/ArchitectureView';
-import { DocumentModal } from './components/DocumentModal';
 import { PermissionDeniedModal } from './components/PermissionDeniedModal';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { Toast } from './components/Toast';
 import { DepartmentSidebar } from './components/DepartmentSidebar';
 import { Footer } from './components/Footer';
 import { Language, UI_STRINGS } from './utils/translations';
+import { useViewTransition } from './hooks/useViewTransition';
 
-// تحميل كسول للمكونات الثقيلة/النادرة (الإدارة، العرض التقديمي، الإعدادات، تسجيل الدخول)
+// تحميل كسول للمكونات الثقيلة/النادرة وقارئ الوثيقة مع التحميل المسبق في وقت الخمول
+const DocumentModal = lazy(() => import('./components/DocumentModal').then((m) => ({ default: m.DocumentModal })));
 const AdminView = lazy(() => import('./components/AdminView').then((m) => ({ default: m.AdminView })));
 const PresentationModal = lazy(() => import('./components/PresentationModal').then((m) => ({ default: m.PresentationModal })));
 const SettingsModal = lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })));
@@ -41,6 +42,7 @@ async function loadDefaultPolicies(): Promise<Policy[]> {
 }
 
 export const App: React.FC = () => {
+  const startViewTransition = useViewTransition();
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings);
   // جلسة المدير نشطة؟ (تلميح أداء فقط، ليس أمنياً) — تحميل Firebase مشروط بها
   const [adminSessionActive, setAdminSessionActive] = useState<boolean>(
@@ -51,6 +53,20 @@ export const App: React.FC = () => {
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
   const [searchTexts, setSearchTexts] = useState<Record<string, string> | undefined>(undefined);
   const adminModeRef = useRef<boolean>(false);
+
+  // تحميل مسبق في وقت الخمول لقارئ الوثيقة (Idle Prefetch)
+  useEffect(() => {
+    const prefetch = () => {
+      import('./components/DocumentModal');
+    };
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const id = (window as any).requestIdleCallback(prefetch, { timeout: 2500 });
+      return () => (window as any).cancelIdleCallback?.(id);
+    } else {
+      const timer = setTimeout(prefetch, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const [bundles, setBundles] = useState<Bundle[]>(getCachedBundles);
   const [currentTab, setCurrentTab] = useState<TabType>('home');
@@ -400,24 +416,28 @@ export const App: React.FC = () => {
     updateHash(currentTab === 'home' ? '#/' : `#/${currentTab}`);
   };
 
-  // Tab switch handler with scroll to top & hash update
+  // Tab switch handler with scroll to top & hash update via View Transitions
   const handleTabChange = (tab: TabType) => {
-    setCurrentTab(tab);
-    setActiveDocPolicy(null);
-    setActivePresPolicy(null);
-    updateHash(tab === 'home' ? '#/' : `#/${tab}`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    startViewTransition(() => {
+      setCurrentTab(tab);
+      setActiveDocPolicy(null);
+      setActivePresPolicy(null);
+      updateHash(tab === 'home' ? '#/' : `#/${tab}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   };
 
-  // Department / Category filter handler with hash update
+  // Department / Category filter handler with hash update via View Transitions
   const handleSelectCategory = (cat: string) => {
-    setSelectedCategory(cat);
-    setSearchQuery('');
-    setCurrentTab('policies');
-    setActiveDocPolicy(null);
-    setActivePresPolicy(null);
-    updateHash(`#/category/${cat}`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    startViewTransition(() => {
+      setSelectedCategory(cat);
+      setSearchQuery('');
+      setCurrentTab('policies');
+      setActiveDocPolicy(null);
+      setActivePresPolicy(null);
+      updateHash(`#/category/${cat}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   };
 
   // Synchronize state with URL Hash for seamless reload (F5) & direct link sharing
@@ -936,18 +956,22 @@ export const App: React.FC = () => {
       </div>
 
       {/* Modals & Overlays */}
-      <DocumentModal
-        policy={activeDocPolicy}
-        isOpen={Boolean(activeDocPolicy)}
-        isAuthorizedAdmin={isAuthorizedAdmin}
-        onClose={handleCloseDocument}
-        onLaunchPresentation={handleOpenPresentation}
-        onEditPolicy={handleStartEdit}
-        lang={lang}
-        isBookmarked={activeDocPolicy ? bookmarkedIds.includes(activeDocPolicy.id) : false}
-        onToggleBookmark={toggleBookmark}
-        searchQuery={searchQuery}
-      />
+      <Suspense fallback={null}>
+        {activeDocPolicy && (
+          <DocumentModal
+            policy={activeDocPolicy}
+            isOpen={true}
+            isAuthorizedAdmin={isAuthorizedAdmin}
+            onClose={handleCloseDocument}
+            onLaunchPresentation={handleOpenPresentation}
+            onEditPolicy={handleStartEdit}
+            lang={lang}
+            isBookmarked={bookmarkedIds.includes(activeDocPolicy.id)}
+            onToggleBookmark={toggleBookmark}
+            searchQuery={searchQuery}
+          />
+        )}
+      </Suspense>
 
       <Suspense fallback={null}>
         {activePresPolicy && (

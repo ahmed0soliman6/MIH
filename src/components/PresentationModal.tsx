@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Policy } from '../types';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 interface PresentationModalProps {
   policy: Policy | null;
@@ -13,7 +14,8 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
   onClose,
 }) => {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [direction, setDirection] = useState<'next' | 'prev'>('next');
+  const dialogRef = useDialogA11y<HTMLDivElement>({ isOpen, onClose });
   const touchStartXRef = useRef(0);
 
   const slides = policy?.slides || [];
@@ -21,15 +23,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setCurrentSlideIndex(0);
-      const prevOverflow = document.body.style.overflow;
-      const prevTouchAction = document.body.style.touchAction;
-      document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
-
-      return () => {
-        document.body.style.overflow = prevOverflow;
-        document.body.style.touchAction = prevTouchAction;
-      };
+      setDirection('next');
     }
   }, [isOpen]);
 
@@ -62,19 +56,21 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
 
   const handleNext = () => {
     if (currentSlideIndex < slides.length - 1) {
+      setDirection('next');
       setCurrentSlideIndex((prev) => prev + 1);
     }
   };
 
   const handlePrev = () => {
     if (currentSlideIndex > 0) {
+      setDirection('prev');
       setCurrentSlideIndex((prev) => prev - 1);
     }
   };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(() => {});
+      dialogRef.current?.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
     }
@@ -100,10 +96,13 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
 
   return (
     <div
-      ref={containerRef}
+      ref={dialogRef}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col select-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`عرض تقديمي: ${policy.title}`}
+      className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col select-none modal-enter"
     >
       {/* Top Bar */}
       <div className="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex items-center justify-between gap-4">
@@ -154,8 +153,13 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
         ></div>
       </div>
 
-      {/* Central Slide Content */}
-      <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center py-6 px-4 slide-active overflow-y-auto custom-scroll">
+      {/* Central Slide Content with RTL-aware transition */}
+      <div
+        key={currentSlideIndex}
+        className={`w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center py-6 px-4 overflow-y-auto custom-scroll ${
+          direction === 'next' ? 'slide-enter-next' : 'slide-enter-prev'
+        }`}
+      >
         <div className="space-y-6">
           <div className="space-y-2">
             <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-teal-900/60 text-teal-300 border border-teal-700/60 inline-block">

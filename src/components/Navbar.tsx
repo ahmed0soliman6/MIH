@@ -29,6 +29,21 @@ export const Navbar: React.FC<NavbarProps> = ({
   lang = 'ar',
 }) => {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+
+  React.useEffect(() => {
+    setLocalSearch(searchQuery);
+  }, [searchQuery]);
+
+  React.useEffect(() => {
+    if (!onSearchChange) return;
+    const timer = setTimeout(() => {
+      if (localSearch !== searchQuery) {
+        onSearchChange(localSearch);
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [localSearch, searchQuery, onSearchChange]);
 
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
@@ -160,18 +175,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="hidden md:flex relative w-64 lg:w-88">
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
                   placeholder={isEn ? 'Search policies...' : 'ابحث عن أي سياسة...'}
                   className={`w-full ${isEn ? 'pl-8 pr-8' : 'pr-8 pl-8'} py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none transition`}
                 />
                 <span className={`absolute ${isEn ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none`}>
                   🔍
                 </span>
-                {searchQuery && (
+                {localSearch && (
                   <button
                     type="button"
-                    onClick={() => onSearchChange('')}
+                    onClick={() => {
+                      setLocalSearch('');
+                      onSearchChange?.('');
+                    }}
                     className={`absolute ${isEn ? 'right-2.5' : 'left-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer`}
                     title="مسح"
                   >
@@ -206,18 +224,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <input
                   autoFocus
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
                   placeholder={isEn ? 'Search policies...' : 'ابحث برقم السياسة أو الكود...'}
                   className={`w-full ${isEn ? 'pl-8 pr-8' : 'pr-8 pl-8'} py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-600 outline-none`}
                 />
                 <span className={`absolute ${isEn ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 text-slate-400 text-xs`}>
                   🔍
                 </span>
-                {searchQuery && (
+                {localSearch && (
                   <button
                     type="button"
-                    onClick={() => onSearchChange('')}
+                    onClick={() => {
+                      setLocalSearch('');
+                      onSearchChange?.('');
+                    }}
                     className={`absolute ${isEn ? 'right-2.5' : 'left-2.5'} top-1/2 -translate-y-1/2 text-slate-400 text-xs`}
                   >
                     ✕
