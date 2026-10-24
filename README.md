@@ -13,7 +13,7 @@
    - فلترة لحظية حسب أقسام المستشفى (المعايير الوطنية NSR، مكافحة العدوى IPC، الأدوية MMS، الجودة QPI، السلامة FMS، الطوارئ ER).
 
 2. **لوحة إدارة مؤمنة بحساب Google (Firebase Auth):**
-   - تسجيل الدخول الإداري عبر Google Sign-In مع دعم وضع المحاكاة المحلي للاختبار السريع.
+   - تسجيل الدخول الإداري الآمن عبر Google Sign-In المعتمد.
    - التحقق من دور المدير من مجموعة `admins` في Firestore (تُفرض بالقواعد).
    - إبقاء المستخدمين غير المصرح لهم في وضع التصفح العام مع تنبيه لطيف.
 
@@ -80,15 +80,14 @@
 - **Security Rules:** `firestore.rules` بأدوار (editor / admin / superadmin) من مجموعة `admins`
 - **Document Parsers:** Mammoth (.docx) & PDF-Lib (.pdf)
 - **AI Extraction:** Gemini 2.5 Flash عبر وكيل خادم آمن `api/gemini.ts` (المفتاح على الخادم فقط)
-- **Admin Email:** `ahmed0soliman6@gmail.com`
 
 ---
 
 ## 🚀 التشغيل ورفع التعديلات إلى GitHub
 
 ```bash
-# تثبيت التبعيات (المستودع يستخدم bun.lock)
-bun install   # أو: npm install
+# تثبيت التبعيات
+npm install   # أو: npm ci
 
 # تشغيل خادم التطوير (الواجهة فقط)
 npm run dev

@@ -8,12 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx tsc --noEmit
-      - run: bun run snapshot:dev
-      - run: bunx vite build
-      - run: bun run verify:dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build:ci
       # حارس أمني: ممنوع وجود مفتاح Google (AIza...) أو أسرار في الحزمة الناتجة
       - name: Fail if a real API key leaked into the bundle
         run: |
