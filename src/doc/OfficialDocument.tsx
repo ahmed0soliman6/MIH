@@ -73,14 +73,14 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
             <tr>
               <td>
                 {/* 1. Official Three-Column Organization Header */}
-                <header className="border-b-2 border-slate-900 pb-3 mb-4">
+                <header className="border-b-2 border-slate-900 dark:border-slate-600 pb-3 mb-4">
                   <div className="flex items-center justify-between gap-2 sm:gap-4">
                     {/* Arabic Right Details */}
-                    <div className="text-right text-[11px] sm:text-xs font-bold leading-snug text-slate-800 shrink-0">
-                      <p className="font-extrabold text-slate-950">{ORG_HEADER.ar.ministry}</p>
+                    <div className="text-right text-[11px] sm:text-xs font-bold leading-snug text-slate-800 dark:text-slate-200 shrink-0">
+                      <p className="font-extrabold text-slate-950 dark:text-white">{ORG_HEADER.ar.ministry}</p>
                       <p>{ORG_HEADER.ar.organization}</p>
-                      <p className="font-black text-teal-800">{ORG_HEADER.ar.hospital}</p>
-                      <p className="text-[10px] text-slate-600">{ORG_HEADER.ar.department}</p>
+                      <p className="font-black text-teal-800 dark:text-teal-400">{ORG_HEADER.ar.hospital}</p>
+                      <p className="text-[10px] text-slate-600 dark:text-slate-400">{ORG_HEADER.ar.department}</p>
                     </div>
 
                     {/* Official Center Hospital Logo */}
@@ -96,12 +96,12 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                     {/* English Left Details (LTR) */}
                     <div
                       dir="ltr"
-                      className="text-left text-[10px] sm:text-[11px] font-semibold leading-snug text-slate-800 shrink-0 font-mono"
+                      className="text-left text-[10px] sm:text-[11px] font-semibold leading-snug text-slate-800 dark:text-slate-200 shrink-0 font-mono"
                     >
-                      <p className="font-extrabold text-slate-950">{ORG_HEADER.en.ministry}</p>
+                      <p className="font-extrabold text-slate-950 dark:text-white">{ORG_HEADER.en.ministry}</p>
                       <p>{ORG_HEADER.en.organization}</p>
-                      <p className="font-black text-teal-800">{ORG_HEADER.en.hospital}</p>
-                      <p className="text-[9px] text-slate-600">{ORG_HEADER.en.department}</p>
+                      <p className="font-black text-teal-800 dark:text-teal-400">{ORG_HEADER.en.hospital}</p>
+                      <p className="text-[9px] text-slate-600 dark:text-slate-400">{ORG_HEADER.en.department}</p>
                     </div>
                   </div>
                 </header>
@@ -113,7 +113,7 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
             <tr>
               <td>
                 {/* Document Footer repeated on every printed page */}
-                <footer className="mt-6 pt-3 border-t border-slate-300 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                <footer className="mt-6 pt-3 border-t border-slate-300 dark:border-slate-700 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                   <span>{code}</span>
                   <span>مستشفى المنصورة الدولي • إدارة الجودة</span>
                   <span>{formattedVersion}</span>
@@ -126,11 +126,11 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
             <tr>
               <td>
                 {/* 2. Document Title Banner */}
-                <div className="bg-slate-100 border border-slate-300 rounded-lg p-3 text-center mb-4">
-                  <h1 className="text-base sm:text-xl font-black text-slate-950 leading-snug">
+                <div className="bg-slate-100 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-lg p-3 text-center mb-4">
+                  <h1 className="text-base sm:text-xl font-black text-slate-950 dark:text-white leading-snug">
                     {policy.title}
                   </h1>
-                  <p className="text-xs font-bold text-teal-800 font-mono mt-0.5">
+                  <p className="text-xs font-bold text-teal-800 dark:text-teal-400 font-mono mt-0.5">
                     {code} • {policy.category || '—'}
                   </p>
                 </div>
@@ -182,8 +182,8 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                 />
 
                 {/* 6. Official Approval Block (خانات فارغة للاسم / الوظيفة / التوقيع / التاريخ) */}
-                <section className="mt-8 pt-4 border-t-2 border-slate-300 break-inside-avoid">
-                  <h3 className="text-xs font-black text-slate-700 mb-2">اعتماد وتوثيق الوثيقة:</h3>
+                <section className="mt-8 pt-4 border-t-2 border-slate-300 dark:border-slate-700 break-inside-avoid">
+                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-300 mb-2">اعتماد وتوثيق الوثيقة:</h3>
                   <table className="mih-table text-xs text-right">
                     <thead>
                       <tr>
@@ -195,22 +195,22 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                     <tbody>
                       <tr>
                         <td className="py-3 px-2">
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900">{approval?.preparedBy?.name || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900">{approval?.preparedBy?.title || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900">{approval?.preparedBy?.signature || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900">{approval?.preparedBy?.date || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.preparedBy?.name || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.preparedBy?.title || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.preparedBy?.signature || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.preparedBy?.date || ''}</span></p>
                         </td>
                         <td className="py-3 px-2">
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900">{approval?.reviewedBy?.name || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900">{approval?.reviewedBy?.title || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900">{approval?.reviewedBy?.signature || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900">{approval?.reviewedBy?.date || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.reviewedBy?.name || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.reviewedBy?.title || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.reviewedBy?.signature || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.reviewedBy?.date || ''}</span></p>
                         </td>
                         <td className="py-3 px-2">
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900">{approval?.approvedBy?.name || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900">{approval?.approvedBy?.title || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900">{approval?.approvedBy?.signature || ''}</span></p>
-                          <p className="font-bold text-slate-800 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900">{approval?.approvedBy?.date || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الاسم: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.approvedBy?.name || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">الوظيفة: <span className="font-normal text-slate-900 dark:text-slate-100">{approval?.approvedBy?.title || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px] mb-1">التوقيع: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.approvedBy?.signature || ''}</span></p>
+                          <p className="font-bold text-slate-800 dark:text-slate-300 text-[11px]">التاريخ: <span className="font-normal font-mono text-slate-900 dark:text-slate-100">{approval?.approvedBy?.date || ''}</span></p>
                         </td>
                       </tr>
                     </tbody>

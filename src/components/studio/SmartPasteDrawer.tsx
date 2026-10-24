@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { smartParseText, SmartDetection } from '../../doc/smartParse';
+import { smartParseText, extractPolicyMetadata, SmartDetection, ExtractedPolicyMetadata } from '../../doc/smartParse';
 import { Block } from '../../doc/model';
 
 interface SmartPasteDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (parsedText: string, blocks: Block[]) => void;
+  onApply: (parsedText: string, blocks: Block[], metadata?: ExtractedPolicyMetadata) => void;
 }
 
 export const SmartPasteDrawer: React.FC<SmartPasteDrawerProps> = ({
@@ -26,11 +26,17 @@ export const SmartPasteDrawer: React.FC<SmartPasteDrawerProps> = ({
     repeatedHeaders: true,
   });
 
-  // Run smart parser on input
+  // Extract metadata and clean text
+  const { metadata, cleanText } = useMemo(() => {
+    if (!inputText.trim()) return { metadata: {}, cleanText: '' };
+    return extractPolicyMetadata(inputText);
+  }, [inputText]);
+
+  // Run smart parser on clean text
   const parseResult = useMemo(() => {
     if (!inputText.trim()) return { blocks: [], detections: [] };
-    return smartParseText(inputText);
-  }, [inputText]);
+    return smartParseText(cleanText || inputText);
+  }, [inputText, cleanText]);
 
   if (!isOpen) return null;
 
@@ -46,10 +52,14 @@ export const SmartPasteDrawer: React.FC<SmartPasteDrawerProps> = ({
       onClose();
       return;
     }
-    onApply(inputText, parseResult.blocks);
+    onApply(cleanText || inputText, parseResult.blocks, metadata);
     setInputText('');
     onClose();
   };
+
+  const hasDetectedMetadata = Boolean(
+    metadata.title || metadata.code || metadata.category || metadata.dept || metadata.version
+  );
 
   return (
     <div
@@ -65,10 +75,10 @@ export const SmartPasteDrawer: React.FC<SmartPasteDrawerProps> = ({
             </span>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                اللصق الذكي (Smart Paste)
+                اللصق الذكي المطور (Smart Paste)
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                الصق النص المنسوخ من Word أو PDF أو ChatGPT وسيتم تحليله وتنسيقه فوراً
+                الصق النص المنسوخ من Word أو PDF أو ChatGPT وسيتم استخراج البيانات وتنسيق الكتل تلقائياً
               </p>
             </div>
           </div>
@@ -85,29 +95,79 @@ export const SmartPasteDrawer: React.FC<SmartPasteDrawerProps> = ({
         <div className="p-5 overflow-y-auto space-y-4 flex-1">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              الصق النص الخام هنا:
+              الصق النص الخام هنا (يمكن لصق صفحة كاملة بما فيها الترويسة والجدول):
             </label>
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="مثال:
-I. السياسة العامة:
-● البند الأول
-● البند الثاني
-   ✓ متطلب فرعي
-الصنف | الجرعة | المدة
-أ | 10 | 5 أيام"
+اسم السياسة طلب الدم ومشتقاته تاريخ الإصدار 2025/6/15
+رقم السياسة SMC/MIH/ICD.20 رقم الإصدار 1
+الأقسام المعنية جميع أقسام المستشفى
+السياسة
+تضع وتنفذ مستشفى المنصورة الدولي...
+الغرض
+ضمان عملية صحيحة وفعالة...
+الإجراءات
+-1 يقوم الطبيب..."
               rows={8}
-              className="w-full text-xs font-mono p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none resize-y"
+              className="w-full text-xs font-mono p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none resize-y leading-relaxed"
             />
           </div>
+
+          {/* Auto-detected metadata banner */}
+          {hasDetectedMetadata && (
+            <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-3.5 space-y-2 text-xs">
+              <span className="font-extrabold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                <span>🎯</span> تم التعرف التلقائي على بيانات الوثيقة (ستُملأ في اللوحة فوراً):
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+                {metadata.title && (
+                  <div>
+                    <span className="text-slate-500 block">العنوان:</span>
+                    <span className="font-bold text-slate-900 dark:text-white truncate block">{metadata.title}</span>
+                  </div>
+                )}
+                {metadata.code && (
+                  <div>
+                    <span className="text-slate-500 block">الكود:</span>
+                    <span className="font-bold font-mono text-teal-700 dark:text-teal-300 block">{metadata.code}</span>
+                  </div>
+                )}
+                {metadata.category && (
+                  <div>
+                    <span className="text-slate-500 block">التصنيف:</span>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-300 block">{metadata.category}</span>
+                  </div>
+                )}
+                {metadata.version && (
+                  <div>
+                    <span className="text-slate-500 block">الإصدار:</span>
+                    <span className="font-bold block">{metadata.version}</span>
+                  </div>
+                )}
+                {metadata.effectiveDate && (
+                  <div>
+                    <span className="text-slate-500 block">تاريخ التفعيل:</span>
+                    <span className="font-mono block">{metadata.effectiveDate}</span>
+                  </div>
+                )}
+                {metadata.dept && (
+                  <div>
+                    <span className="text-slate-500 block">الأقسام:</span>
+                    <span className="truncate block">{metadata.dept}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Detections Summary */}
           {parseResult.detections.length > 0 && (
             <div className="bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800/40 rounded-xl p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-teal-900 dark:text-teal-200 flex items-center gap-1.5">
-                  <span>✨</span> الاكتشافات الذكية ({parseResult.blocks.length} كتل مكتشفة):
+                  <span>✨</span> الكتل الهيكلية المكتشفة ({parseResult.blocks.length} كتلة):
                 </span>
                 <span className="text-[11px] text-teal-700 dark:text-teal-300 font-mono">
                   {parseResult.detections.reduce((acc, d) => acc + d.count, 0)} عنصر

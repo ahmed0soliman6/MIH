@@ -56,6 +56,10 @@ export const CATEGORY_TRANSLATIONS: Record<Language, Record<CategoryKey, Categor
     WFM: {
       name: 'إدارة القوى العاملة (WFM)',
       desc: 'سياسات تهيئة وتدريب وتطوير الكوادر الطبية والتمريضية والإدارية والتعليم المستمر.'
+    },
+    CSS: {
+      name: 'خدمات الرعاية الحرجة والخاصة (CSS)',
+      desc: 'خدمات الرعاية الحرجة، التعامل مع الإنذارات، القساطر والأنابيب، ورعاية الحالات الخاصة والحرجة.'
     }
   },
   en: {
@@ -106,6 +110,10 @@ export const CATEGORY_TRANSLATIONS: Record<Language, Record<CategoryKey, Categor
     WFM: {
       name: 'Workforce Management & Training (WFM)',
       desc: 'Clinical staff onboarding, medical credentials verification, mandatory competencies, and CME programs.'
+    },
+    CSS: {
+      name: 'Critical and Special Care Services (CSS)',
+      desc: 'Critical care services, clinical alarm management, catheter and tubing safety, and specialized palliative/ICU care.'
     }
   }
 };

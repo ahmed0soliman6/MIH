@@ -153,7 +153,7 @@ export const StudioMetadataPanel: React.FC<StudioMetadataPanelProps> = ({
                 >
                   {Object.entries(CATEGORY_META).map(([key, info]) => (
                     <option key={key} value={key}>
-                      {info.badge} - {info.name}
+                      {info.icon} {info.name}
                     </option>
                   ))}
                   <option value="CUSTOM">+ تصنيف مخصص...</option>

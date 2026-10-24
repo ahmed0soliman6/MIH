@@ -63,6 +63,7 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
   const [historyIdx, setHistoryIdx] = useState<number>(0);
 
   // UI state
+  const [docMode, setDocMode] = useState<'page' | 'reading'>('page');
   const [isSaving, setIsSaving] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [isSmartPasteOpen, setIsSmartPasteOpen] = useState(false);
@@ -613,35 +614,67 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
               <span>معاينة حية فورية (A4)</span>
             </span>
 
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-              <button
-                type="button"
-                onClick={() => setZoomScale(0.75)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
-                  zoomScale === 0.75 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
-                }`}
-              >
-                75%
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoomScale(1)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
-                  zoomScale === 1 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
-                }`}
-              >
-                100%
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoomScale(1.15)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
-                  zoomScale === 1.15 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
-                }`}
-              >
-                115%
-              </button>
+            {/* Mode & Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setDocMode('page')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                    docMode === 'page'
+                      ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="محاكاة ورقة A4 للطباعة"
+                >
+                  📄 A4
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDocMode('reading')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                    docMode === 'reading'
+                      ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="قراءة متكيفة مع الوضع الليلي والشاشات"
+                >
+                  🌙 قراءة مريحة
+                </button>
+              </div>
+
+              {/* Zoom Controls */}
+              {docMode === 'page' && (
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setZoomScale(0.75)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                      zoomScale === 0.75 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
+                    }`}
+                  >
+                    75%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomScale(1)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                      zoomScale === 1 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
+                    }`}
+                  >
+                    100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomScale(1.15)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                      zoomScale === 1.15 ? 'bg-white dark:bg-slate-700 shadow-xs font-bold text-teal-700 dark:text-teal-300' : 'text-slate-500'
+                    }`}
+                  >
+                    115%
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -649,8 +682,8 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
           <div className="flex-1 overflow-y-auto p-4 flex justify-center">
             <OfficialDocument
               policy={previewPolicy}
-              mode="page"
-              zoomScale={zoomScale}
+              mode={docMode}
+              zoomScale={docMode === 'page' ? zoomScale : 1}
             />
           </div>
         </div>
@@ -660,13 +693,21 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
       <SmartPasteDrawer
         isOpen={isSmartPasteOpen}
         onClose={() => setIsSmartPasteOpen(false)}
-        onApply={(parsedText) => {
+        onApply={(parsedText, parsedBlocks, detectedMeta) => {
+          if (detectedMeta) {
+            if (detectedMeta.title) setTitle(detectedMeta.title);
+            if (detectedMeta.code) setCode(detectedMeta.code);
+            if (detectedMeta.category) setCategory(detectedMeta.category);
+            if (detectedMeta.dept) setDept(detectedMeta.dept);
+            if (detectedMeta.version) setVersion(detectedMeta.version);
+            if (detectedMeta.effectiveDate) setEffectiveDate(detectedMeta.effectiveDate);
+            if (detectedMeta.reviewDate) setReviewDate(detectedMeta.reviewDate);
+          }
           setRawText((prev) => (prev ? `${prev}\n\n${parsedText}` : parsedText));
           if (contentMode === 'blocks') {
-            const parsed = smartParseText(parsedText).blocks;
-            pushBlocksHistory([...blocks, ...parsed]);
+            pushBlocksHistory([...blocks, ...parsedBlocks]);
           }
-          onShowToast('تم تطبيق النص الذكي على المحرر');
+          onShowToast('تم تطبيق النص والبيانات المستخرجة بنجاح');
         }}
       />
 

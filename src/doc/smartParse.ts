@@ -25,6 +25,135 @@ export interface SmartParseResult {
   detections: SmartDetection[];
 }
 
+export interface ExtractedPolicyMetadata {
+  title?: string;
+  code?: string;
+  category?: string;
+  version?: string;
+  date?: string;
+  effectiveDate?: string;
+  reviewDate?: string;
+  dept?: string;
+  preparedBy?: { name: string; title: string };
+  reviewedBy?: { name: string; title: string };
+  approvedBy?: { name: string; title: string };
+}
+
+/**
+ * Extracts hospital policy metadata (title, code, category, dates, dept, approval)
+ * and strips table headers, repeated hospital headers, and signatures from the body text.
+ */
+export function extractPolicyMetadata(text: string): { metadata: ExtractedPolicyMetadata; cleanText: string } {
+  if (!text || !text.trim()) {
+    return { metadata: {}, cleanText: '' };
+  }
+
+  const metadata: ExtractedPolicyMetadata = {};
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 1. Title
+    if (!metadata.title) {
+      const titleMatch = trimmed.match(/(?:اسم السياسة|عنوان السياسة)[\s:：]+(.*?)(?=\s*(?:تاريخ|رقم|كود|الاقسام|الأقسام|\n|$))/i);
+      if (titleMatch && titleMatch[1].trim()) {
+        metadata.title = titleMatch[1].trim().replace(/^[-–—:\s]+/, '');
+      }
+    }
+
+    // 2. Code
+    if (!metadata.code) {
+      const codeMatch = trimmed.match(/(?:رقم السياسة|كود السياسة)[\s:：]+([A-Za-z0-9/._-]+|(?:\d+[A-Z]+\/[A-Z]+\/[A-Z]+))/i);
+      if (codeMatch && codeMatch[1].trim()) {
+        let extractedCode = codeMatch[1].trim();
+        const reversedMatch = extractedCode.match(/^(\d+)([A-Z]+)\/([A-Z]+)\/([A-Z]+)$/);
+        if (reversedMatch) {
+          extractedCode = `${reversedMatch[4]}/${reversedMatch[3]}/${reversedMatch[2]}.${reversedMatch[1]}`;
+        }
+        metadata.code = extractedCode;
+
+        // Auto-infer category from code
+        const upper = extractedCode.toUpperCase();
+        if (upper.includes('CSS')) metadata.category = 'CSS';
+        else if (upper.includes('ICD')) metadata.category = 'ICD';
+        else if (upper.includes('PCC')) metadata.category = 'PCC';
+        else if (upper.includes('IMT')) metadata.category = 'IMT';
+        else if (upper.includes('QPI')) metadata.category = 'QPI';
+        else if (upper.includes('ACT')) metadata.category = 'ACT';
+        else if (upper.includes('SAS')) metadata.category = 'SAS';
+        else if (upper.includes('MMS')) metadata.category = 'MMS';
+        else if (upper.includes('WFM')) metadata.category = 'WFM';
+        else if (upper.includes('IPC')) metadata.category = 'IPC';
+        else if (upper.includes('FMS')) metadata.category = 'FMS';
+        else if (upper.includes('NSR')) metadata.category = 'NSR';
+      }
+    }
+
+    // 3. Version (ensure it does not match "تاريخ الإصدار")
+    if (!metadata.version) {
+      const versionMatch = trimmed.match(/(?:رقم\s*الإصدار|رقم\s*الاصدار|الإصدار\s*رقم)\s*[:：]?\s*(\d+(?:\.\d+)?)/i);
+      if (versionMatch && versionMatch[1]) {
+        metadata.version = versionMatch[1].trim();
+      }
+    }
+
+    // 4. Issue Date (تاريخ الإصدار)
+    if (!metadata.date) {
+      const dateMatch = trimmed.match(/تاريخ الإصدار[\s:：]+([\d/.-]+)/i);
+      if (dateMatch && dateMatch[1]) {
+        metadata.date = dateMatch[1].trim();
+      }
+    }
+
+    // 5. Effective Date (تاريخ التفعيل / تاريخ السريان)
+    if (!metadata.effectiveDate) {
+      const effMatch = trimmed.match(/(?:تاريخ التفعيل|تاريخ السريان)[\s:：]+([\d/.-]+)/i);
+      if (effMatch && effMatch[1]) {
+        metadata.effectiveDate = effMatch[1].trim();
+      }
+    }
+
+    // 6. Review Date (تاريخ المراجعة)
+    if (!metadata.reviewDate) {
+      const revMatch = trimmed.match(/تاريخ المراجعة[\s:：]+([\d/.-]+)/i);
+      if (revMatch && revMatch[1]) {
+        metadata.reviewDate = revMatch[1].trim();
+      }
+    }
+
+    // 7. Department (الأقسام المعنية)
+    if (!metadata.dept) {
+      const deptMatch = trimmed.match(/(?:االقسام المعنية|الأقسام المعنية|الاقسام المعنية|القسم المعني)[\s:：]+(.*?)(?=\s*(?:تاريخ|رقم|اعتماد|اعداد|إعداد|\n|$))/i);
+      if (deptMatch && deptMatch[1].trim()) {
+        metadata.dept = deptMatch[1].trim();
+      }
+    }
+  }
+
+  // Filter out header lines, repeated hospital headers, and approval metadata from body
+  const isHeaderOrMetaLine = (trimmed: string) => {
+    if (!trimmed) return false;
+    // Hospital branding header lines
+    if (/^(?:وزارة الصحة|أمانة المراكز الطبية المتخصصة|مستشفى المنصورة الدولي|إدارة الجودة)$/i.test(trimmed)) return true;
+    if (/^(?:Ministry of Health|Specialized Medical Centers|Mansoura International Hospital|Quality Department)$/i.test(trimmed)) return true;
+    if (/^\d{1,3}$/.test(trimmed)) return true; // Standalone page numbers
+
+    // Document metadata table lines (both single and compound column rows)
+    if (/(?:اسم السياسة|عنوان السياسة|رقم السياسة|كود السياسة|تاريخ الإصدار|رقم الإصدار|عدد الصفحات|تاريخ التفعيل|تاريخ السريان|تاريخ المراجعة|االقسام المعنية|الأقسام المعنية|الاقسام المعنية)/i.test(trimmed)) return true;
+
+    // Approval / Signatures blocks
+    if (/^(?:اعتماد|مراجعة|اعداد|إعداد|التوقيع|\s)+$/i.test(trimmed)) return true;
+    if (/(?:االسم|الاسم|الوظيفة|التوقيع)\s*[:：]/i.test(trimmed)) return true;
+    return false;
+  };
+
+  const cleanLines = lines.filter((l) => !isHeaderOrMetaLine(l.trim()));
+  const cleanText = cleanLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return { metadata, cleanText };
+}
+
 export function smartParseText(rawText: string): SmartParseResult {
   if (!rawText || !rawText.trim()) {
     return { blocks: [], detections: [] };
@@ -129,10 +258,12 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // Rule 2: Repeated Headers (frequency >= 3) and standalone page numbers (e.g. "10")
+    // Repeated hospital headers and page numbers
     if (
-      (lineFrequencies.get(trimmed) && lineFrequencies.get(trimmed)! >= 3) ||
-      /^\d{1,3}$/.test(trimmed)
+      /^(?:وزارة الصحة|أمانة المراكز الطبية المتخصصة|مستشفى المنصورة الدولي|إدارة الجودة)$/i.test(trimmed) ||
+      /^(?:Ministry of Health|Specialized Medical Centers|Mansoura International Hospital|Quality Department)$/i.test(trimmed) ||
+      /^\d{1,3}$/.test(trimmed) ||
+      (lineFrequencies.get(trimmed) && lineFrequencies.get(trimmed)! >= 3)
     ) {
       flushAll();
       counts.repeatedHeaders++;
@@ -153,7 +284,6 @@ export function smartParseText(rawText: string): SmartParseResult {
       trimmed.split('|').filter((c) => c.trim().length > 0).length >= 2;
 
     if (isPipeTableLine) {
-      // Skip separator rows like |---|---|
       if (/^\|?[\s\-:|]+\|?$/.test(trimmed)) {
         continue;
       }
@@ -169,6 +299,24 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     } else {
       flushTable();
+    }
+
+    // Rule: Standard Hospital Quality Accreditation Sections (GAHAR)
+    const standardSectionMatch = trimmed.match(
+      /^(?:[➢>●•\-–—]\s*)?(السياسة(?:\s+والهدف|\s+والغرض)?|الغرض|الهدف|الأهداف|المجال|نطاق التطبيق|التعريفات|االجراءات|الإجراءات|إجراءات العمل|خطوات العمل|المسئول عن التنفيذ|المسؤول عن التنفيذ|المسئولون عن التنفيذ|النماذج|النماذج المستخدمة|المراجع|المرفقات)[\s:：]*$/i
+    );
+    if (standardSectionMatch) {
+      flushAll();
+      let title = standardSectionMatch[1].trim();
+      if (title === 'االجراءات') title = 'الإجراءات';
+      blocks.push({
+        id: createBlockId(),
+        type: 'section',
+        title,
+        style: 'bar',
+      });
+      counts.sections++;
+      continue;
     }
 
     // Rule 4: Box Prefix Section (□ or ☐)
@@ -266,10 +414,27 @@ export function smartParseText(rawText: string): SmartParseResult {
       flushChecklist();
     }
 
+    // Rule 8: Ordered Lists (1. 2. 3. or أ- ب- ج- or -1 or -2)
+    const decimalMatch = trimmed.match(/^(?:[-–—]\s*)?(\d+)[\.\-\)]\s*(.*)$/);
+    const arabicLettersMatch = trimmed.match(/^([أ-ي])[\.\-\)]\s*(.*)$/);
+    if (decimalMatch || arabicLettersMatch) {
+      const text = decimalMatch ? decimalMatch[2].trim() : arabicLettersMatch![2].trim();
+      const kind: OrderedKind = decimalMatch ? 'decimal' : 'arabic-letters';
+
+      if (!currentOrdered || currentOrdered.kind !== kind) {
+        flushOrdered();
+        currentOrdered = { kind, items: [] };
+      }
+      currentOrdered.items.push({ id: createBlockId(), text });
+      counts.ordered++;
+      continue;
+    } else {
+      flushOrdered();
+    }
+
     // Rule 7: Bullet Lists (➢, ✓, -, –, •, ●, *)
     const bulletMatch = trimmed.match(/^([➢>✓✔\-–—•●\*])\s*(.*)$/);
     if (bulletMatch) {
-      flushOrdered();
       const sym = bulletMatch[1];
       const text = bulletMatch[2].trim();
       let marker: ListMarker = 'disc';
@@ -277,7 +442,6 @@ export function smartParseText(rawText: string): SmartParseResult {
       else if (sym === '✓' || sym === '✔') marker = 'check';
       else if (/^[-–—]$/.test(sym)) marker = 'dash';
 
-      // Check indentation for nesting or symbol shift (e.g. ● then indented ✓)
       const indentLevel = Math.floor((rawLine.match(/^\s*/)?.[0].length || 0) / 2);
       const isSubBullet =
         (sym === '✓' || sym === '✔' || indentLevel > 0) &&
@@ -298,26 +462,10 @@ export function smartParseText(rawText: string): SmartParseResult {
       }
 
       currentList.items.push({ id: createBlockId(), text });
+      counts.lists++;
       continue;
     } else {
       flushList();
-    }
-
-    // Rule 8: Ordered Lists (1. 2. 3. or أ- ب- ج-)
-    const decimalMatch = trimmed.match(/^(\d+)[\.\-\)]\s*(.*)$/);
-    const arabicLettersMatch = trimmed.match(/^([أ-ي])[\.\-\)]\s*(.*)$/);
-    if (decimalMatch || arabicLettersMatch) {
-      const text = decimalMatch ? decimalMatch[2].trim() : arabicLettersMatch![2].trim();
-      const kind: OrderedKind = decimalMatch ? 'decimal' : 'arabic-letters';
-
-      if (!currentOrdered || currentOrdered.kind !== kind) {
-        flushOrdered();
-        currentOrdered = { kind, items: [] };
-      }
-      currentOrdered.items.push({ id: createBlockId(), text });
-      continue;
-    } else {
-      flushOrdered();
     }
 
     // Rule 5: Subheading (ends with colon ':' or wrapped in **bold:** or ###)

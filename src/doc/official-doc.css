@@ -28,14 +28,20 @@
   line-height: 1.75;
 }
 
-/* 1. Page Mode (A4 Sheet Simulation) */
-.mih-doc.mode-page {
+.mih-doc.mode-page,
+.dark .mih-doc.mode-page {
   width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
   padding: 16mm 16mm 18mm 16mm;
   background-color: #ffffff !important;
   color: #0f172a !important;
+  --doc-ink: #0f172a !important;
+  --doc-muted: #475569 !important;
+  --doc-bar: #f1f5f9 !important;
+  --doc-accent: #0f766e !important;
+  --doc-border: #cbd5e1 !important;
+  --doc-bg: #ffffff !important;
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.08);
   border: 1px solid #e2e8f0;
   box-sizing: border-box;
@@ -57,6 +63,40 @@
   --doc-bar: rgba(30, 41, 59, 0.7);
   --doc-accent: #2dd4bf;
   --doc-border: #334155;
+  --doc-bg: #0f172a;
+}
+
+.dark .mih-doc.mode-reading .mih-table th {
+  background-color: #1e293b;
+  color: #f1f5f9;
+  border-color: #334155;
+}
+
+.dark .mih-doc.mode-reading .mih-table td {
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+.dark .mih-doc.mode-reading .mih-table tr:nth-child(even) td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.dark .mih-doc.mode-reading .mih-callout[data-type="note"] {
+  background-color: rgba(15, 118, 110, 0.15);
+  border-color: #2dd4bf;
+  color: #5eead4;
+}
+
+.dark .mih-doc.mode-reading .mih-callout[data-type="warn"] {
+  background-color: rgba(245, 158, 11, 0.15);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+
+.dark .mih-doc.mode-reading .mih-callout[data-type="important"] {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: #f87171;
+  color: #fca5a5;
 }
 
 /* 3. Section Titles & Counter Numbering */

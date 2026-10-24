@@ -1,6 +1,12 @@
 import { Policy, Bundle, CategoryInfo, CategoryKey } from '../types';
 
 export const CATEGORY_META: Record<CategoryKey, CategoryInfo> = {
+  "CSS": {
+    "name": "خدمات الرعاية الحرجة والخاصة (CSS)",
+    "badge": "bg-rose-100 text-rose-800 border-rose-200",
+    "icon": "🫀",
+    "desc": "خدمات الرعاية الحرجة، التعامل مع الإنذارات، القساطر والأنابيب، ورعاية الحالات الخاصة والحرجة."
+  },
   "NSR": {
     "name": "المعايير الوطنية للسلامة (NSR)",
     "badge": "bg-red-100 text-red-800 border-red-200",

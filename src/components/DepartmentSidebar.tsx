@@ -73,9 +73,9 @@ export const DepartmentSidebar: React.FC<DepartmentSidebarProps> = ({
     return map;
   }, [policies]);
 
-  // Standard category order matching hospital quality structure
+  // Standard category order matching hospital accreditation structure & manual
   const categoriesOrder: CategoryKey[] = [
-    'NSR', 'IPC', 'MMS', 'QPI', 'FMS', 'ER', 'ICD', 'PCC', 'IMT', 'ACT', 'SAS', 'WFM'
+    'CSS', 'ICD', 'PCC', 'IMT', 'QPI', 'ACT', 'SAS', 'MMS', 'WFM', 'NSR', 'IPC', 'FMS', 'ER'
   ];
 
   const handleBookmarksClick = () => {
