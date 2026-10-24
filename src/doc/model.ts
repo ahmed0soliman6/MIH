@@ -35,17 +35,18 @@ export type Block =
   | { id: string; type: 'pagebreak' }
   | { id: string; type: 'raw'; html: string };
 
-export interface DocumentApproval {
-  preparedBy: { name: string; title: string; signature?: string; date?: string };
-  reviewedBy: { name: string; title: string; signature?: string; date?: string };
-  approvedBy: { name: string; title: string; signature?: string; date?: string };
+export interface ApprovalEntry {
+  name?: string;
+  title?: string;
+  signature?: string;
+  date?: string;
 }
 
-export const DEFAULT_APPROVAL: DocumentApproval = {
-  preparedBy: { name: 'فريق الجودة', title: 'عضو فريق الجودة', signature: 'معتمد إلكترونياً' },
-  reviewedBy: { name: 'د/ منسق معايير الجودة', title: 'مدير إدارة الجودة', signature: 'معتمد إلكترونياً' },
-  approvedBy: { name: 'أ.د/ مدير عام المستشفى', title: 'المدير العام ورئيس مجلس الإدارة', signature: 'معتمد رسمياً' },
-};
+export interface DocumentApproval {
+  preparedBy?: ApprovalEntry;
+  reviewedBy?: ApprovalEntry;
+  approvedBy?: ApprovalEntry;
+}
 
 export function createBlockId(): string {
   return 'b_' + Math.random().toString(36).substring(2, 9);

@@ -4,7 +4,15 @@
  * Converts unstructured plain text into structured Block[] and returns detections.
  */
 
-import { Block, ListItem, ChecklistItem, ListMarker, OrderedKind, CalloutType, createBlockId } from './model';
+import {
+  Block,
+  ListItem,
+  ChecklistItem,
+  ListMarker,
+  OrderedKind,
+  CalloutType,
+  createBlockId,
+} from './model';
 
 export interface SmartDetection {
   type: string;
@@ -22,7 +30,18 @@ export function smartParseText(rawText: string): SmartParseResult {
     return { blocks: [], detections: [] };
   }
 
-  const lines = rawText.split(/\r?\n/);
+  // 1. Normalize line breaks and tabs
+  const rawLines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+  // Count line frequencies for repeated header detection (Rule 2)
+  const lineFrequencies = new Map<string, number>();
+  for (const line of rawLines) {
+    const trimmed = line.trim();
+    if (trimmed && !/^[0-9]+$/.test(trimmed)) {
+      lineFrequencies.set(trimmed, (lineFrequencies.get(trimmed) || 0) + 1);
+    }
+  }
+
   const blocks: Block[] = [];
   const counts: Record<string, number> = {
     sections: 0,
@@ -33,6 +52,7 @@ export function smartParseText(rawText: string): SmartParseResult {
     tables: 0,
     checklists: 0,
     pagebreaks: 0,
+    repeatedHeaders: 0,
   };
 
   let currentList: { marker: ListMarker; items: ListItem[] } | null = null;
@@ -100,12 +120,22 @@ export function smartParseText(rawText: string): SmartParseResult {
     flushTable();
   };
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i];
+  for (let i = 0; i < rawLines.length; i++) {
+    const rawLine = rawLines[i];
     const trimmed = rawLine.trim();
 
     if (!trimmed) {
       flushAll();
+      continue;
+    }
+
+    // Rule 2: Repeated Headers (frequency >= 3) and standalone page numbers (e.g. "10")
+    if (
+      (lineFrequencies.get(trimmed) && lineFrequencies.get(trimmed)! >= 3) ||
+      /^\d{1,3}$/.test(trimmed)
+    ) {
+      flushAll();
+      counts.repeatedHeaders++;
       continue;
     }
 
@@ -117,17 +147,22 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // 2. Table row (pipes | col 1 | col 2 | ...)
-    if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2) {
+    // 2. Table row (pipes | col 1 | col 2 | or col 1 | col 2)
+    const isPipeTableLine =
+      trimmed.includes('|') &&
+      trimmed.split('|').filter((c) => c.trim().length > 0).length >= 2;
+
+    if (isPipeTableLine) {
       // Skip separator rows like |---|---|
-      if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
+      if (/^\|?[\s\-:|]+\|?$/.test(trimmed)) {
         continue;
       }
       flushList();
       flushOrdered();
       flushChecklist();
       const cells = trimmed
-        .slice(1, -1)
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
         .split('|')
         .map((c) => c.trim());
       currentTableRows.push(cells);
@@ -136,7 +171,21 @@ export function smartParseText(rawText: string): SmartParseResult {
       flushTable();
     }
 
-    // 3. Roman Numeral Section: I. II. III. IV. V. VI. VII. VIII. IX. X. ...
+    // Rule 4: Box Prefix Section (□ or ☐)
+    const boxSectionMatch = trimmed.match(/^[□☐]\s*(.*)$/);
+    if (boxSectionMatch) {
+      flushAll();
+      blocks.push({
+        id: createBlockId(),
+        type: 'section',
+        title: boxSectionMatch[1].replace(/[:：]$/, '').trim(),
+        style: 'box',
+      });
+      counts.sections++;
+      continue;
+    }
+
+    // Rule 3: Roman Numeral Section: I. II. III. IV. V. VI. VII. VIII. IX. X. ...
     const romanMatch = trimmed.match(/^([IVXLCDM]+)\.\s*(.*)$/i);
     if (romanMatch) {
       flushAll();
@@ -152,7 +201,7 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // 4. Section headers with # or "القسم:" or "أولاً:"
+    // Section headers with # or "القسم:" or "المعيار:"
     const headerMatch = trimmed.match(/^(#{1,2}\s*|(?:القسم|البند|المعيار)\s*\d*[:\s]+)(.*)$/);
     if (headerMatch) {
       flushAll();
@@ -166,15 +215,31 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // 5. Callouts (تنبيه / تحذير / هام / ملاحظة)
-    const calloutMatch = trimmed.match(/^(تنبيه|تحذير|خطر|هام|ملاحظة|ملحوظة)\s*[:：]\s*(.*)$/i);
+    // Rule 5: Subheading with ➢ or ending with colon
+    if (trimmed.startsWith('➢') && (trimmed.endsWith(':') || trimmed.endsWith('：'))) {
+      flushAll();
+      const subText = trimmed.replace(/^➢\s*/, '').replace(/[:：]$/, '').trim();
+      blocks.push({
+        id: createBlockId(),
+        type: 'subheading',
+        text: '➢ ' + subText + ':',
+        style: 'underline',
+      });
+      counts.subheadings++;
+      continue;
+    }
+
+    // Rule 10: Callouts (تنبيه / تحذير / هام / ملاحظة / Note / Warning / Important)
+    const calloutMatch = trimmed.match(
+      /^(تنبيه|تحذير|خطر|هام|ملاحظة|ملحوظة|Note|Warning|Important)\s*[:：]\s*(.*)$/i
+    );
     if (calloutMatch) {
       flushAll();
       const keyword = calloutMatch[1];
       const text = calloutMatch[2].trim();
       let type: CalloutType = 'note';
-      if (/تحذير|خطر/i.test(keyword)) type = 'warn';
-      else if (/هام/i.test(keyword)) type = 'important';
+      if (/تحذير|خطر|Warning/i.test(keyword)) type = 'warn';
+      else if (/هام|Important/i.test(keyword)) type = 'important';
 
       blocks.push({
         id: createBlockId(),
@@ -186,8 +251,8 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // 6. Checklist (☐, ☑, [ ], [x], [X])
-    const checklistMatch = trimmed.match(/^(☐|☑|\[[\sxX]\])\s*(.*)$/);
+    // Rule 7 & Checklist: (☐, ☑, [ ], [x], [X]) inside lists
+    const checklistMatch = trimmed.match(/^(☑|\[[\sxX]\])\s*(.*)$/);
     if (checklistMatch) {
       flushList();
       flushOrdered();
@@ -201,8 +266,8 @@ export function smartParseText(rawText: string): SmartParseResult {
       flushChecklist();
     }
 
-    // 7. Bullet Lists (➢, ✓, -, –, •, ●, *)
-    const bulletMatch = trimmed.match(/^(➢|>|✓|✔|[-–—]|•|●|\*)\s*(.*)$/);
+    // Rule 7: Bullet Lists (➢, ✓, -, –, •, ●, *)
+    const bulletMatch = trimmed.match(/^([➢>✓✔\-–—•●\*])\s*(.*)$/);
     if (bulletMatch) {
       flushOrdered();
       const sym = bulletMatch[1];
@@ -212,26 +277,33 @@ export function smartParseText(rawText: string): SmartParseResult {
       else if (sym === '✓' || sym === '✔') marker = 'check';
       else if (/^[-–—]$/.test(sym)) marker = 'dash';
 
-      // Check indentation for nesting
+      // Check indentation for nesting or symbol shift (e.g. ● then indented ✓)
       const indentLevel = Math.floor((rawLine.match(/^\s*/)?.[0].length || 0) / 2);
+      const isSubBullet =
+        (sym === '✓' || sym === '✔' || indentLevel > 0) &&
+        currentList &&
+        currentList.marker === 'disc' &&
+        currentList.items.length > 0;
 
-      if (!currentList) {
-        currentList = { marker, items: [] };
-      }
-
-      if (indentLevel > 0 && currentList.items.length > 0) {
+      if (isSubBullet && currentList) {
         const parent = currentList.items[currentList.items.length - 1];
         if (!parent.children) parent.children = [];
         parent.children.push({ id: createBlockId(), text });
-      } else {
-        currentList.items.push({ id: createBlockId(), text });
+        continue;
       }
+
+      if (!currentList || currentList.marker !== marker) {
+        flushList();
+        currentList = { marker, items: [] };
+      }
+
+      currentList.items.push({ id: createBlockId(), text });
       continue;
     } else {
       flushList();
     }
 
-    // 8. Ordered Lists (1. 2. 3. or أ- ب- ج-)
+    // Rule 8: Ordered Lists (1. 2. 3. or أ- ب- ج-)
     const decimalMatch = trimmed.match(/^(\d+)[\.\-\)]\s*(.*)$/);
     const arabicLettersMatch = trimmed.match(/^([أ-ي])[\.\-\)]\s*(.*)$/);
     if (decimalMatch || arabicLettersMatch) {
@@ -248,10 +320,17 @@ export function smartParseText(rawText: string): SmartParseResult {
       flushOrdered();
     }
 
-    // 9. Subheading (ends with colon ':' or wrapped in **bold:** or ###)
-    if (trimmed.endsWith(':') || trimmed.endsWith('：') || trimmed.startsWith('###')) {
+    // Rule 5: Subheading (ends with colon ':' or wrapped in **bold:** or ###)
+    if (
+      (trimmed.endsWith(':') || trimmed.endsWith('：') || trimmed.startsWith('###')) &&
+      trimmed.length < 100
+    ) {
       flushAll();
-      const subText = trimmed.replace(/^###\s*/, '').replace(/[:：]$/, '').replace(/\*\*/g, '').trim();
+      const subText = trimmed
+        .replace(/^###\s*/, '')
+        .replace(/[:：]$/, '')
+        .replace(/\*\*/g, '')
+        .trim();
       blocks.push({
         id: createBlockId(),
         type: 'subheading',
@@ -262,7 +341,7 @@ export function smartParseText(rawText: string): SmartParseResult {
       continue;
     }
 
-    // 10. Default Paragraph
+    // Rule 13: Default Paragraph
     flushAll();
     blocks.push({
       id: createBlockId(),
@@ -282,6 +361,7 @@ export function smartParseText(rawText: string): SmartParseResult {
     { type: 'tables', label: 'جداول', count: counts.tables },
     { type: 'checklists', label: 'قوائم تحقق', count: counts.checklists },
     { type: 'pagebreaks', label: 'فواصل صفحات', count: counts.pagebreaks },
+    { type: 'repeatedHeaders', label: 'ترويسات وأرقام صفحات مكررة', count: counts.repeatedHeaders },
   ].filter((d) => d.count > 0);
 
   return { blocks, detections };

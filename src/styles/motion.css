@@ -92,7 +92,7 @@
 }
 
 .modal-enter {
-  animation: modalEnterAnimation var(--dur-base) var(--ease-out-expo) forwards;
+  animation: modalEnterAnimation var(--dur-base) var(--ease-out-expo) backwards;
 }
 
 .modal-exit {

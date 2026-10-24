@@ -317,13 +317,33 @@
   z-index: 1;
 }
 
+/* Print frame structure */
+.mih-print-frame {
+  width: 100%;
+  border-collapse: collapse;
+  border: none;
+}
+.mih-print-frame > thead > tr > td,
+.mih-print-frame > tfoot > tr > td,
+.mih-print-frame > tbody > tr > td {
+  border: none;
+  padding: 0;
+}
+
 /* 4. Print Layout Optimization */
 @media print {
   @page {
     size: A4;
     margin: 16mm 14mm 18mm 14mm;
   }
-  
+  @page {
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-size: 8pt;
+      font-family: 'Cairo', monospace;
+    }
+  }
+
   body {
     background: #ffffff !important;
     color: #000000 !important;
@@ -342,6 +362,19 @@
     margin: 0 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .mih-print-frame {
+    display: table;
+    width: 100%;
+  }
+
+  .mih-print-thead {
+    display: table-header-group;
+  }
+
+  .mih-print-tfoot {
+    display: table-footer-group;
   }
 
   .mih-h2, .mih-sub {
