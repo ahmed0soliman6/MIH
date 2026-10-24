@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Policy, CategoryKey } from '../types';
-import { CATEGORY_META, isManualPolicy } from '../data/meta';
+import { CATEGORY_META } from '../data/meta';
 import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
 import { normalizeArabic } from '../utils/arabic';
-import { prefetchPolicy } from '../services/policyData';
 
 interface PoliciesViewProps {
   policies: Policy[];
@@ -21,7 +20,25 @@ interface PoliciesViewProps {
   bookmarkedIds?: string[];
   onToggleBookmark?: (policyId: string) => void;
   searchTexts?: Record<string, string>;
+  isLoading?: boolean;
 }
+
+interface QuickChip {
+  id: string;
+  label: string;
+  labelEn: string;
+  categoryFilter?: string;
+  keywordFilter?: string;
+}
+
+const EMERGENCY_CHIPS: QuickChip[] = [
+  { id: 'ALL', label: '🌐 الكل', labelEn: '🌐 All Policies', categoryFilter: 'ALL' },
+  { id: 'EMERGENCY', label: '🚨 الكود الأزرق والطوارئ', labelEn: '🚨 Code Blue & Emergency', categoryFilter: 'ER', keywordFilter: 'انعاش طوارئ ازرق blue cpr' },
+  { id: 'BUNDLES', label: '🩺 حزم الرعاية الإكلينيكية (Bundles)', labelEn: '🩺 Clinical Bundles', keywordFilter: 'حزمة حزم bundle clabsi cauti vap ssi' },
+  { id: 'IPC', label: '🛡️ مكافحة العدوى IPC', labelEn: '🛡️ Infection Control IPC', categoryFilter: 'IPC' },
+  { id: 'MMS', label: '💊 الأدوية عالية الخطورة MMS', labelEn: '💊 High-Alert Meds MMS', categoryFilter: 'MMS' },
+  { id: 'NSR', label: '📋 المعايير الوطنية للسلامة NSR', labelEn: '📋 National Safety NSR', categoryFilter: 'NSR' },
+];
 
 export const PoliciesView: React.FC<PoliciesViewProps> = ({
   policies,
@@ -38,187 +55,174 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   lang = 'ar',
   bookmarkedIds = [],
   onToggleBookmark,
-  searchTexts,
+  isLoading = false,
 }) => {
-  const [sourceFilter, setSourceFilter] = useState<'ALL' | 'BOOKMARKS' | 'MANUAL' | 'CORE'>('ALL');
-
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
 
-  const bookmarksCount = bookmarkedIds.length;
-  const manualPoliciesCount = policies.filter(isManualPolicy).length;
-  const corePoliciesCount = policies.length - manualPoliciesCount;
+  const [activeChipId, setActiveChipId] = useState<string>('ALL');
 
   const normalizedQuery = useMemo(() => normalizeArabic(searchQuery.trim()), [searchQuery]);
+  const queryTokens = useMemo(() => normalizedQuery.split(/\s+/).filter(Boolean), [normalizedQuery]);
 
-  // فهرس بحث مُطبَّع (يُبنى من الحقول الخفيفة + نصوص البحث الكامل إذا توفرت)
+  // بناء فهرس بحث مُطبَّع شامل لكافة الحقول (عنوان، كود، قسم، غرض، نص، أقسام مستهدفة)
   const searchIndex = useMemo(() => {
     const map = new Map<string, string>();
     policies.forEach((p) => {
-      const fullText = (searchTexts && searchTexts[p.id]) || p.plain_text || '';
-      map.set(p.id, normalizeArabic(`${p.title} ${p.code} ${p.dept} ${p.purpose} ${fullText}`));
+      const combined = [
+        p.title,
+        p.code,
+        p.dept,
+        p.target_departments,
+        p.category,
+        p.purpose,
+        p.plain_text,
+        p.summary,
+        p.effectiveDate,
+        Array.isArray(p.responsibilities) ? p.responsibilities.join(' ') : p.responsibilities,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      map.set(p.id, normalizeArabic(combined));
     });
     return map;
-  }, [policies, searchTexts]);
+  }, [policies]);
 
   const isBookmarksCategory = selectedCategory === 'BOOKMARKS';
 
-  const filtered = useMemo(
-    () =>
-      policies.filter((p) => {
-        const isManual = isManualPolicy(p);
-        const isFav = bookmarkedIds.includes(p.id);
+  // معالجة الضغط على شرائح الوصول السريع للطوارئ
+  const handleChipClick = (chip: QuickChip) => {
+    setActiveChipId(chip.id);
+    if (chip.categoryFilter) {
+      onCategoryChange(chip.categoryFilter);
+    } else {
+      onCategoryChange('ALL');
+    }
+  };
 
-        const inBookmarksMode = isBookmarksCategory || sourceFilter === 'BOOKMARKS';
-        if (inBookmarksMode && !isFav) return false;
+  const filtered = useMemo(() => {
+    const activeChip = EMERGENCY_CHIPS.find((c) => c.id === activeChipId);
+    const chipKeywords = activeChip?.keywordFilter
+      ? normalizeArabic(activeChip.keywordFilter).split(/\s+/).filter(Boolean)
+      : [];
 
-        if (!inBookmarksMode) {
-          if (sourceFilter === 'MANUAL' && !isManual) return false;
-          if (sourceFilter === 'CORE' && isManual) return false;
-        }
+    return policies.filter((p) => {
+      const isFav = bookmarkedIds.includes(p.id);
+      if (isBookmarksCategory && !isFav) return false;
 
-        const matchCategory =
-          selectedCategory === 'ALL' ||
-          selectedCategory === 'BOOKMARKS' ||
-          p.category === selectedCategory;
-        const matchQuery = !normalizedQuery || (searchIndex.get(p.id) || '').includes(normalizedQuery);
-        return matchCategory && matchQuery;
-      }),
-    [policies, sourceFilter, isBookmarksCategory, bookmarkedIds, selectedCategory, normalizedQuery, searchIndex]
-  );
+      // فحص التصنيف
+      let matchCategory =
+        selectedCategory === 'ALL' ||
+        selectedCategory === 'BOOKMARKS' ||
+        p.category === selectedCategory;
+
+      const indexedText = searchIndex.get(p.id) || '';
+
+      // فحص شريحة الطوارئ النشطة إذا كانت تعتمد على الكلمات المفتاحية مثل Bundles
+      if (activeChipId === 'BUNDLES' && chipKeywords.length > 0) {
+        const matchesAnyKeyword = chipKeywords.some((kw) => indexedText.includes(kw));
+        if (!matchesAnyKeyword) return false;
+      } else if (activeChipId === 'EMERGENCY') {
+        const isErCat = p.category === 'ER';
+        const matchesEmergencyKw = chipKeywords.some((kw) => indexedText.includes(kw));
+        if (!isErCat && !matchesEmergencyKw) return false;
+      } else if (activeChip?.categoryFilter && activeChip.categoryFilter !== 'ALL') {
+        if (p.category !== activeChip.categoryFilter) return false;
+      }
+
+      // فحص كلمات البحث (تطبيع عربي متعدد الكلمات: أ/إ/آ/ا ، ة/ه ، ى/ي ، والتشكيل)
+      const matchQuery =
+        queryTokens.length === 0 ||
+        queryTokens.every((token) => indexedText.includes(token));
+
+      return matchCategory && matchQuery;
+    });
+  }, [
+    policies,
+    isBookmarksCategory,
+    bookmarkedIds,
+    selectedCategory,
+    queryTokens,
+    searchIndex,
+    activeChipId,
+  ]);
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            {isBookmarksCategory && <span>❤️</span>}
-            <span>
-              {isBookmarksCategory
-                ? isEn
-                  ? 'My Bookmarked Policies'
-                  : 'مفضلاتي (السياسات المحفوظة)'
-                : isEn
-                ? 'Accredited Quality Policies Library'
-                : 'مكتبة سياسات الجودة المعتمدة'}
-            </span>
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
-            {isBookmarksCategory
-              ? isEn
-                ? 'Quick access to your saved clinical policies and procedures'
-                : 'الوصول السريع لجميع السياسات والإجراءات الطبية التي قمت بحفظها'
-              : isEn
-              ? 'Browse, read, and bookmark accredited clinical policies or launch interactive presentation slides'
-              : 'تصفح وقراءة وحفظ السياسات المعتمدة في مفضلتك أو تشغيلها في وضع العرض التقديمي'}
-          </p>
+    <section className="space-y-4 select-none">
+      {/* Quick Access Emergency Chips Bar (Top of policy library as compact scrollable chips) */}
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto custom-scroll pb-1 pt-0.5 no-scrollbar">
+          <span className="text-xs font-black text-slate-500 dark:text-slate-400 shrink-0 px-2 flex items-center gap-1">
+            <span>⚡</span>
+            <span className="hidden sm:inline">{isEn ? 'Quick Filter:' : 'الوصول السريع:'}</span>
+          </span>
+          {EMERGENCY_CHIPS.map((chip) => {
+            const isSelected = activeChipId === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => handleChipClick(chip)}
+                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border active:scale-95 flex items-center gap-1.5 shadow-2xs ${
+                  isSelected
+                    ? 'bg-teal-700 dark:bg-teal-600 text-white border-teal-600 dark:border-teal-500 shadow-sm ring-2 ring-teal-500/20'
+                    : 'bg-slate-50 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span>{isEn ? chip.labelEn : chip.label}</span>
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        {isAuthorizedAdmin && (
+      {/* Subtle Admin Action Bar (only if authorized admin) */}
+      {isAuthorizedAdmin && (
+        <div className="flex justify-between items-center gap-2">
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+            {isEn ? 'Total Policies Shown:' : 'إجمالي السياسات المعروضة:'}{' '}
+            <span className="text-teal-700 dark:text-teal-400 font-black font-mono">
+              {filtered.length}
+            </span>
+          </div>
           <button
             type="button"
             onClick={onAddPolicy}
-            className="self-start sm:self-auto bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer active:scale-95"
+            className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
           >
             <span>➕</span>
             <span>{isEn ? 'Add New Clinical Policy' : 'إضافة سياسة جديدة'}</span>
           </button>
-        )}
-      </div>
-
-      {/* Source Filters Bar with Bookmarks Tab */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <button
-          type="button"
-          onClick={() => setSourceFilter('ALL')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            sourceFilter === 'ALL'
-              ? 'bg-teal-700 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-          }`}
-        >
-          {isEn ? `All Policies (${policies.length})` : `جميع السياسات (${policies.length})`}
-        </button>
-
-        {/* Dedicated Bookmarks ("مفضلاتي") Filter Tab */}
-        <button
-          type="button"
-          onClick={() => setSourceFilter('BOOKMARKS')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-            sourceFilter === 'BOOKMARKS'
-              ? 'bg-rose-700 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-          }`}
-        >
-          <span>❤️</span>
-          <span>{t.bookmarksFilterTab} ({bookmarksCount})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSourceFilter('MANUAL')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            sourceFilter === 'MANUAL'
-              ? 'bg-teal-700 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-          }`}
-        >
-          📖 {isEn ? `Comprehensive Manual (${manualPoliciesCount})` : `المجلد الشامل (${manualPoliciesCount})`}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSourceFilter('CORE')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            sourceFilter === 'CORE'
-              ? 'bg-teal-700 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-          }`}
-        >
-          🏥 {isEn ? `Core Policies (${corePoliciesCount})` : `السياسات القياسية الأساسية (${corePoliciesCount})`}
-        </button>
-      </div>
-
-      {/* Search and Category Filters */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center gap-3 transition-colors">
-        <div className="relative flex-1 w-full">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t.searchPlaceholder}
-            className={`w-full ${isEn ? 'pl-4 pr-10' : 'pr-4 pl-10'} py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none transition`}
-          />
-          <span className={`absolute ${isEn ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 text-slate-400`}>
-            🔍
-          </span>
         </div>
+      )}
 
-        <div className="w-full md:w-72">
-          <select
-            value={selectedCategory}
-            onChange={(e) => onCategoryChange(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none transition cursor-pointer"
-          >
-            <option value="ALL">{t.allCategories}</option>
-            {Array.from(new Set([...(Object.keys(CATEGORY_META) as CategoryKey[]), ...policies.map((p) => p.category).filter(Boolean)])).map((cat) => {
-              const catKey = cat as CategoryKey;
-              const catTrans = CATEGORY_TRANSLATIONS[lang]?.[catKey];
-              const meta = CATEGORY_META[catKey];
-              const label = catTrans ? catTrans.name : (meta ? meta.name : cat);
-              return (
-                <option key={cat} value={cat}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
+      {/* Skeleton Loading State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4 animate-pulse shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-28 h-5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                <div className="w-16 h-4 bg-slate-200 dark:bg-slate-700 rounded-md" />
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="w-5/6 h-5 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                <div className="w-1/2 h-5 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+              </div>
+              <div className="w-full h-12 bg-slate-100 dark:bg-slate-700/50 rounded-xl" />
+              <div className="w-full h-8 bg-slate-100 dark:bg-slate-700/60 rounded-xl" />
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <div className="flex-1 h-9 bg-teal-100 dark:bg-teal-950/60 rounded-xl" />
+                <div className="w-20 h-9 bg-slate-200 dark:bg-slate-700 rounded-xl" />
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
-
-      {/* Policies Grid or Empty State */}
-      {filtered.length === 0 ? (
-        sourceFilter === 'BOOKMARKS' ? (
+      ) : filtered.length === 0 ? (
+        isBookmarksCategory ? (
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-rose-100 dark:border-rose-950/60 p-12 text-center space-y-4 shadow-xs transition-colors">
             <span className="text-5xl block animate-bounce">❤️</span>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -230,9 +234,9 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                setSourceFilter('ALL');
                 onSearchChange('');
                 onCategoryChange('ALL');
+                setActiveChipId('ALL');
               }}
               className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition cursor-pointer shadow-xs"
             >
@@ -255,7 +259,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
               onClick={() => {
                 onSearchChange('');
                 onCategoryChange('ALL');
-                setSourceFilter('ALL');
+                setActiveChipId('ALL');
               }}
               className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition cursor-pointer"
             >
@@ -274,16 +278,12 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             };
             const catTrans = (CATEGORY_TRANSLATIONS[lang] as Record<string, any>)?.[p.category];
             const categoryName = catTrans ? catTrans.name.split(' ')[0] : meta.name.split(' ')[0];
-            const slidesCount = typeof p.slidesCount === 'number' ? p.slidesCount : (Array.isArray(p.slides) ? p.slides.length : 0);
-            const isManual = isManualPolicy(p);
+            const slidesCount = Array.isArray(p.slides) ? p.slides.length : 0;
             const isFav = bookmarkedIds.includes(p.id);
 
             return (
               <article
                 key={p.id}
-                onMouseEnter={() => prefetchPolicy(p)}
-                onTouchStart={() => prefetchPolicy(p)}
-                onFocus={() => prefetchPolicy(p)}
                 className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-teal-500 dark:hover:border-teal-400 transition-all flex flex-col justify-between p-5 space-y-4"
               >
                 <div className="space-y-3">
@@ -292,16 +292,9 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
                       {p.code} • {categoryName}
                     </span>
 
-                    {isManual ? (
-                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                        <span>📖</span>
-                        <span>{isEn ? 'Official Manual' : 'مجلد الـ 320 صفحة'}</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400 dark:text-slate-400 font-bold">
-                        {p.version || (isEn ? 'Version 1.0' : 'الإصدار 1.0')}
-                      </span>
-                    )}
+                    <span className="text-xs text-slate-400 dark:text-slate-400 font-bold">
+                      {p.version || (isEn ? 'Version 1.0' : 'الإصدار 1.0')}
+                    </span>
                   </div>
 
                   {/* Title with Interactive Heart Bookmark Button beside it */}

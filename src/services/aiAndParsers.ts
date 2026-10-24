@@ -5,7 +5,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Slide, CategoryKey } from '../types';
 import { callGemini, describeGeminiHttpError } from './geminiClient';
-import { loadFirebase } from './firebaseLoader';
+import { getCurrentIdToken } from './firebase';
 
 // Safely configure PDF.js worker in browser context without crashing
 if (typeof window !== 'undefined' && (pdfjsLib as any).GlobalWorkerOptions) {
@@ -29,6 +29,35 @@ export function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+export function cleanAndRepairArabicText(raw: string): string {
+  if (!raw) return '';
+  let text = raw;
+
+  // 1. Remove hyphens/dashes between Arabic letters (e.g. ف - ري - ق -> فريق, ال - ج - ودة -> الجودة)
+  for (let i = 0; i < 5; i++) {
+    const prev = text;
+    text = text.replace(/([\u0600-\u06FF])\s*[-–—_]\s*([\u0600-\u06FF])/g, '$1$2');
+    if (text === prev) break;
+  }
+
+  // 2. Fix spaced-out Arabic letters (e.g. "ف ر ي ق" or "ا ل س ي ا س ة")
+  text = text.replace(/(?:^|\s)([\u0600-\u06FF]\s+){2,}[\u0600-\u06FF](?:\s|$)/g, (match) => {
+    const trimmed = match.trim();
+    const parts = trimmed.split(/\s+/);
+    if (parts.every(p => p.length === 1 && /[\u0600-\u06FF]/.test(p))) {
+      return ' ' + parts.join('') + ' ';
+    }
+    return match;
+  });
+
+  // 3. Normalize duplicate spaces and clean orphan dashes
+  text = text.replace(/\s*[-–—]\s*/g, ' - ');
+  text = text.replace(/^\s*-\s+/gm, '• ');
+  text = text.replace(/\s{2,}/g, ' ');
+
+  return text.trim();
 }
 
 export function generateSlidesFromHtml(html: string, title: string): Slide[] {
@@ -413,12 +442,12 @@ export async function extractPdfTextLocally(
         lines.push(curLineWords.join(' '));
       }
 
-      // Filter out strange unprintable characters or control glyphs
+      // Filter out strange unprintable characters or control glyphs and repair disconnected Arabic characters
       const cleanLines = lines
-        .map((l) => l.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '').trim())
+        .map((l) => cleanAndRepairArabicText(l.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')).trim())
         .filter((l) => l.length > 0);
 
-      const pageText = cleanLines.join('\n');
+      const pageText = cleanAndRepairArabicText(cleanLines.join('\n'));
 
       // Check if page has readable text or is a scanned image
       const readableTextLength = pageText.replace(/[^a-zA-Z\u0600-\u06FF0-9]/g, '').length;
@@ -690,8 +719,7 @@ export async function processPdfWithGemini(
   content_html: string;
   slides: Slide[];
 }> {
-  const fb = await loadFirebase();
-  if (!(await fb.getCurrentIdToken())) {
+  if (!(await getCurrentIdToken())) {
     throw new Error('سجّل الدخول بحساب مدير معتمد لاستخدام التحويل الذكي (Gemini).');
   }
 

@@ -1,12 +1,11 @@
-import { loadFirebase } from './firebaseLoader';
+import { getCurrentIdToken } from './firebase';
 
 /**
  * استدعاء Gemini عبر الوكيل الآمن /api/gemini (المفتاح على الخادم فقط).
  * يعيد Response بنفس واجهة fetch حتى تبقى منطقيات المعالجة كما هي.
  */
 export async function callGemini(model: string, body: unknown): Promise<Response> {
-  const fb = await loadFirebase();
-  const token = await fb.getCurrentIdToken();
+  const token = await getCurrentIdToken();
   if (!token) {
     throw new Error('سجّل الدخول بحساب مدير معتمد لاستخدام التحويل الذكي (Gemini).');
   }
@@ -22,5 +21,6 @@ export function describeGeminiHttpError(status: number): string {
   if (status === 413) return 'حجم الطلب كبير (حد Vercel ≈ 4.5MB). قلّل نطاق الصفحات أو استخدم الاستخراج المحلي.';
   if (status === 429) return 'تم تجاوز الحد المسموح مؤقتاً، حاول بعد دقائق.';
   if (status === 404) return 'خدمة /api/gemini غير متاحة (في التطوير المحلي استخدم: vercel dev).';
+  if (status === 504) return 'انتهت مهلة استجابة الخادم (HTTP 504). نطاق الصفحات المحدد كبير، يُرجى تقليله إلى صفحة أو صفحتين، أو استخدام الاستخراج المحلي السريع الفوري.';
   return `HTTP ${status}`;
 }

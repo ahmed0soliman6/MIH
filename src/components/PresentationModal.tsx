@@ -38,10 +38,10 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({
     if (!isOpen || slides.length === 0) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === ' ') {
+      if (e.key === 'ArrowLeft' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault();
         handleNext();
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'PageUp') {
         e.preventDefault();
         handlePrev();
       } else if (e.key === 'Escape') {

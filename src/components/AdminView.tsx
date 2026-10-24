@@ -86,15 +86,18 @@ interface AdminViewProps {
   onShowToast: (message: string) => void;
   onUpdateSettings: (settings: SystemSettings) => void;
   onSeedFirestore?: () => Promise<void>;
-  onImportPolicies?: (imported: Policy[]) => Promise<void>;
+  onImportPolicies?: (
+    imported: Policy[],
+    onProgress?: (progress: { current: number; total: number; percent: number }) => void
+  ) => Promise<{ addedCount?: number; updatedCount?: number } | void>;
   adminRole?: AdminRole | null;
   adminList?: AdminEntry[];
   currentUserEmail?: string;
   onAddAdmin?: (email: string, role: AdminRole) => Promise<void>;
   onRemoveAdmin?: (email: string) => Promise<void>;
   onUpdateAdminRole?: (email: string, role: AdminRole) => Promise<void>;
-  publishStatus?: 'idle' | 'pending' | 'publishing' | 'published' | 'error';
-  onTriggerPublishNow?: () => void;
+  publishStatus?: any;
+  onTriggerPublishNow?: (keepalive?: boolean) => Promise<boolean | void>;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -116,33 +119,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onAddAdmin,
   onRemoveAdmin,
   onUpdateAdminRole,
-  publishStatus = 'idle',
+  publishStatus,
   onTriggerPublishNow,
 }) => {
   const [editorTab, setEditorTab] = useState<'edit-fields' | 'preview-doc' | 'preview-slides'>('edit-fields');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
-
-  // حالة طي وفتح البطاقات المنفصلة (Collapsible Accordion Cards)
-  const [openCards, setOpenCards] = useState<{
-    admins: boolean;
-    converter: boolean;
-    editor: boolean;
-  }>({
-    admins: true,      // مفتوحة لسهولة إدارة المستخدمين وتعديل الأدوار
-    converter: false,  // مطوية لتنظيم المساحة وتفتح بضغطة زر
-    editor: true,      // مفتوحة للتحرير والمعاينة
-  });
-
-  const toggleCard = (cardKey: 'admins' | 'converter' | 'editor') => {
-    setOpenCards((prev) => ({ ...prev, [cardKey]: !prev[cardKey] }));
-  };
-
-  useEffect(() => {
-    if (editingPolicy) {
-      setOpenCards((prev) => ({ ...prev, editor: true }));
-    }
-  }, [editingPolicy]);
+  const [activeTopCard, setActiveTopCard] = useState<'converter' | 'editor' | 'admins'>('converter');
 
   // Form state
   const [title, setTitle] = useState('');
@@ -172,7 +155,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [pdfStartPage, setPdfStartPage] = useState<number>(1);
   const [pdfEndPage, setPdfEndPage] = useState<number>(5);
 
-  // إدارة المديرين (superadmin فقط)
+  // إدارة المديرين (superadmin فقط؛ تُفرض فعلياً بقواعد Firestore)
+  const [localAdmins, setLocalAdmins] = useState<AdminEntry[]>(adminList);
+  useEffect(() => {
+    setLocalAdmins(adminList);
+  }, [adminList]);
+
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminRole, setNewAdminRole] = useState<AdminRole>('editor');
   const isSuperAdmin = adminRole === 'superadmin';
@@ -186,7 +174,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowToast('يرجى إدخال بريد إلكتروني كامل وصالح (مثال: name@gmail.com)');
       return;
     }
-    if (adminList.some((a) => a.email === clean)) {
+    if (localAdmins.some((a) => a.email.toLowerCase() === clean)) {
       onShowToast('هذا البريد مسجل بالفعل في قائمة المديرين');
       return;
     }
@@ -205,15 +193,25 @@ export const AdminView: React.FC<AdminViewProps> = ({
     await onRemoveAdmin(emailToRemove);
   };
 
-  const handleRoleChange = async (targetEmail: string, newRole: AdminRole) => {
+  const handleRoleChange = async (email: string, newRole: AdminRole) => {
     if (!onUpdateAdminRole) return;
-    if (targetEmail.toLowerCase() === currentUserEmail.trim().toLowerCase() && newRole !== 'superadmin') {
-      const confirmSelf = confirm(
-        '⚠️ تحذير: أنت على وشك خفض صلاحيات حسابك الشخصي من مدير عام (superadmin). لن تتمكن بعدها من إضافة أو ترقية مدراء آخرين. هل أنت متأكد؟'
-      );
-      if (!confirmSelf) return;
+    if (email === currentUserEmail.trim().toLowerCase() && newRole !== 'superadmin') {
+      if (!confirm('تحذير: أنت على وشك خفض صلاحيات حسابك الحالي. هل تريد المتابعة؟')) return;
     }
-    await onUpdateAdminRole(targetEmail, newRole);
+    // تحديث تفاؤلي فوري في الواجهة
+    setLocalAdmins((prev) =>
+      prev.map((a) => (a.email.toLowerCase() === email.toLowerCase() ? { ...a, role: newRole } : a))
+    );
+    onShowLoading(true, `جاري تعديل دور (${email}) إلى (${newRole})...`);
+    try {
+      await onUpdateAdminRole(email, newRole);
+      onShowLoading(false);
+      onShowToast(`تم بنجاح تعديل دور ${email} إلى ${newRole}`);
+    } catch (err: any) {
+      setLocalAdmins(adminList);
+      onShowLoading(false);
+      alert(`حدث خطأ أثناء تعديل الدور: ${err.message || err}`);
+    }
   };
 
   const loadPolicy = (p: Policy) => {
@@ -308,6 +306,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowLoading(false);
       onShowToast(`🎉 تم بنجاح استخراج محتوى الصورة وإدراجها بالوثيقة وبناء شرائح العرض!`);
       setEditorTab('preview-doc');
+      setActiveTopCard('editor');
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
@@ -356,6 +355,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowLoading(false);
       onShowToast(`🎉 تم بنجاح استخراج محتوى ملف Word وبناء (${parsed.slides.length}) شريحة!`);
       setEditorTab('preview-doc');
+      setActiveTopCard('editor');
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
@@ -385,6 +385,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowLoading(false);
       onShowToast(`🎉 تم بنجاح استخراج (${parsed.slides.length}) شريحة من ملف PowerPoint وبناء العرض التقديمي!`);
       setEditorTab('preview-slides');
+      setActiveTopCard('editor');
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
@@ -408,7 +409,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
         doc: pdfDoc
       });
       setPdfStartPage(1);
-      setPdfEndPage(Math.min(5, totalPages));
+      setPdfEndPage(Math.min(2, totalPages));
 
       onShowLoading(false);
       onShowToast(`تم تحميل ملف PDF (${totalPages} صفحة). يمكنك الآن الاختيار بين الاستخراج المحلي الفوري أو التحليل بـ Gemini.`);
@@ -424,7 +425,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleExtractPdfLocally = async () => {
     if (!rawPdfFile) return;
 
-    onShowLoading(true, `جاري استخراج النصوص محلياً من الصفحات (${pdfStartPage}) إلى (${pdfEndPage}) في المتصفح...`);
+    onShowLoading(true, `جاري استخراج النصوص محلياً من الصفحات (${pdfStartPage}) إلى (${pdfEndPage}) في المتصفح وتصحيح الحروف...`);
     try {
       const parsed = await extractPdfTextLocally(rawPdfFile, pdfStartPage, pdfEndPage);
       setTitle(parsed.title);
@@ -442,8 +443,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
 
       onShowLoading(false);
-      onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API!`);
+      onShowToast(`🎉 تم بنجاح استخراج محتوى الصفحات (${parsed.slides.length} شريحة) محلياً بدون إنترنت أو مفتاح API مع تصحيح الحروف!`);
       setEditorTab('preview-doc');
+      setActiveTopCard('editor');
     } catch (err: any) {
       onShowLoading(false);
       console.error(err);
@@ -472,10 +474,42 @@ export const AdminView: React.FC<AdminViewProps> = ({
       onShowLoading(false);
       onShowToast('🎉 تم استخراج السياسة وبناء الشرائح بواسطة الذكاء الاصطناعي بنجاح!');
       setEditorTab('preview-doc');
+      setActiveTopCard('editor');
     } catch (err: any) {
-      onShowLoading(false);
       console.error(err);
-      alert('حدث خطأ أثناء معالجة الذكاء الاصطناعي: ' + (err.message || err));
+      const errMsg = String(err.message || err);
+      const isTimeoutOr504 = errMsg.includes('504') || errMsg.includes('Gateway Timeout') || errMsg.includes('انتهت مهلة') || errMsg.includes('FUNCTION_INVOCATION_TIMEOUT');
+
+      if (isTimeoutOr504 && rawPdfFile) {
+        onShowLoading(true, '⚠️ انتهت مهلة معالجة الذكاء الاصطناعي (504). جاري التحويل التلقائي للاستخراج المحلي فائق السرعة مع تصحيح الحروف...');
+        try {
+          const parsed = await extractPdfTextLocally(rawPdfFile, pdfStartPage, pdfEndPage);
+          setTitle(parsed.title);
+          setCode(parsed.code);
+          setCategory(parsed.category);
+          setDept(parsed.dept);
+          setVersion(parsed.version);
+          setDate(parsed.date);
+          setPurpose(parsed.purpose);
+          setContentHtml(parsed.content_html);
+          setSlides(parsed.slides);
+          if (parsed.images && parsed.images.length > 0) {
+            setImages(parsed.images);
+          }
+          setManualPlainText(parsed.plain_text || stripHtmlTags(parsed.content_html));
+
+          onShowLoading(false);
+          onShowToast('⚡ تم التحويل بنجاح للاستخراج المحلي وتصحيح الحروف المقطعة تلقائياً!');
+          setEditorTab('preview-doc');
+          setActiveTopCard('editor');
+          return;
+        } catch (fallbackErr) {
+          console.error('Fallback error:', fallbackErr);
+        }
+      }
+
+      onShowLoading(false);
+      alert('حدث خطأ أثناء معالجة الذكاء الاصطناعي: ' + errMsg + '\n\n💡 نصيحة: اختر صفحة أو صفحتين فقط لتقليل وقت المعالجة وتجنب انتهاء المهلة، أو استخدم زر "⚡ استخراج محلي سريع".');
     }
   };
 
@@ -681,224 +715,283 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span>📥</span>
             <span>تصدير نسخة JSON</span>
           </button>
-          <button
-            type="button"
-            onClick={onResetDefaults}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950 text-red-700 dark:text-red-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
-          >
-            <span>🔄</span>
-            <span>استعادة الافتراضي</span>
-          </button>
-
-          {/* Publish Status Indicator */}
-          {publishStatus && (
-            <div className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 shadow-xs transition ${
-              publishStatus === 'pending'
-                ? 'bg-amber-50 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
-                : publishStatus === 'publishing'
-                ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 animate-pulse'
-                : publishStatus === 'published'
-                ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
-                : publishStatus === 'error'
-                ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200'
-                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}>
-              {publishStatus === 'pending' && <span>⏳ سيُنشر تلقائياً خلال لحظات...</span>}
-              {publishStatus === 'publishing' && <span>🚀 جاري النشر وبناء النسخة الجديدة...</span>}
-              {publishStatus === 'published' && <span>✅ منشور ومتاح للزوار</span>}
-              {publishStatus === 'error' && <span>⚠️ تعذر النشر التلقائي</span>}
-              {publishStatus === 'idle' && <span>☁️ النظام متزامن</span>}
-
-              {onTriggerPublishNow && (
-                <button
-                  type="button"
-                  onClick={onTriggerPublishNow}
-                  disabled={publishStatus === 'publishing'}
-                  className="px-2.5 py-0.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-black text-[11px] cursor-pointer shadow-xs disabled:opacity-50"
-                  title="نشر التعديلات فوراً عبر Vercel Deploy Hook وتجاوز وقت الانتظار"
-                >
-                  نشر الآن
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Card 0: Admin Whitelist & Roles Management (بطاقة مستقلة وقابلة للطي) */}
-      {canSeeAdmins && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-teal-500/30 dark:border-teal-500/20 shadow-md overflow-hidden transition-all duration-300">
-          {/* Card Header (Clickable Accordion) */}
-          <div
-            onClick={() => toggleCard('admins')}
-            className="p-5 sm:p-6 bg-gradient-to-r from-teal-50/80 via-white to-slate-50/70 dark:from-teal-950/30 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-teal-50/90 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-                👥
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                    إدارة مديري الجودة وصلاحيات الحسابات
-                  </h3>
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700">
-                    {adminList.length} أعضاء
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                  التحكم في أدوار الفريق وترقية وتعيين المشرفين (Superadmin / Admin / Editor) مباشرة
+      {/* 3 Top Cards strictly in the same row */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        {/* Card 1 Tab: Smart AI Converter */}
+        <div
+          onClick={() => setActiveTopCard('converter')}
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+            activeTopCard === 'converter'
+              ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
+          }`}
+        >
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-teal-500/10 text-teal-700 dark:text-teal-300">🚀</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
+                activeTopCard === 'converter'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}>
+                {activeTopCard === 'converter' ? 'النشط' : 'فتح'}
+              </span>
+            </div>
+            <div>
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
+                محرك الرفع والتحويل الذكي
+              </h3>
+              <p className="text-[9px] sm:text-[11px] font-mono text-teal-700 dark:text-teal-400 font-bold truncate">
+                Smart AI Converter
+              </p>
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                رفع واستخراج فوري لملفات Word و PDF و PPTX والصور تلقائياً
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-teal-800 dark:text-teal-300">
+            <span>تحويل فوري + بناء الشرائح</span>
+            <span>←</span>
+          </div>
+        </div>
+
+        {/* Card 2 Tab: Policy Editor & Preview */}
+        <div
+          onClick={() => setActiveTopCard('editor')}
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+            activeTopCard === 'editor'
+              ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
+          }`}
+        >
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">📝</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
+                activeTopCard === 'editor'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}>
+                {policies?.length || 0} سياسة
+              </span>
+            </div>
+            <div>
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
+                محرر ومعاينة السياسة
+              </h3>
+              <p className="text-[9px] sm:text-[11px] font-mono text-indigo-700 dark:text-indigo-400 font-bold truncate">
+                Policy Editor & Preview
+              </p>
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                تحرير الحقول والشرائح ومعاينة الوثيقة الرسمية ومحاكي العرض
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-indigo-800 dark:text-indigo-300">
+            <span>المعاينة والحفظ السحابي</span>
+            <span>←</span>
+          </div>
+        </div>
+
+        {/* Card 3 Tab: Quality Managers & Roles */}
+        <div
+          onClick={() => setActiveTopCard('admins')}
+          className={`p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer relative flex flex-col justify-between select-none ${
+            activeTopCard === 'admins'
+              ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 shadow-md ring-2 ring-teal-500'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-teal-400 hover:shadow-xs'
+          }`}
+        >
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">👥</span>
+              <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
+                activeTopCard === 'admins'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}>
+                {localAdmins.length} مديرين
+              </span>
+            </div>
+            <div>
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight">
+                إدارة مديري الجودة والأدوار
+              </h3>
+              <p className="text-[9px] sm:text-[11px] font-mono text-amber-700 dark:text-amber-400 font-bold truncate">
+                Quality Managers & Roles
+              </p>
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                إضافة واعتماد وتعديل صلاحيات المديرين (محرر / مدير / مدير عام)
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
+            <span>تعديل الصلاحيات والأدوار</span>
+            <span>←</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 1. Section: محرك الرفع والتحويل الذكي (Smart AI Converter) */}
+      {activeTopCard === 'converter' && (
+        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+          <div>
+            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span>🚀</span>
+              <span>محرك الرفع والتحويل الذكي (Smart AI Converter)</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              اختر ملف Word أو PDF أو عرض PowerPoint أو صورة لاستخراج محتواها وتحويلها لسياسة وشرائح تلقائياً
+            </p>
+          </div>
+
+          {/* Universal Fast Converter Banner */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-teal-900 via-slate-900 to-indigo-950 text-white border border-teal-500/40 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-3xl p-2 rounded-2xl bg-teal-500/20 border border-teal-500/30 shrink-0">🎯</span>
+              <div className="min-w-0">
+                <h4 className="text-sm sm:text-base font-black text-white">
+                  المحول الشامل التلقائي (Word / PDF / PowerPoint / صور)
+                </h4>
+                <p className="text-xs text-slate-300 font-semibold mt-0.5">
+                  اختر أي ملف بصيغة Word (.docx) أو PDF أو PowerPoint (.pptx) أو صورة (.png/.jpg) وسيقوم النظام فوراً باستخراج محتواه وبناء الشرائح ونقله لمحرر السياسة
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <span className="text-xs font-bold text-teal-700 dark:text-teal-400 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-100/60 dark:bg-teal-900/40">
-                <span>{openCards.admins ? 'طي البطاقة' : 'فتح وإدارة الصلاحيات'}</span>
-                <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.admins ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                  ▼
-                </span>
-              </span>
+            <div>
+              <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white font-black text-xs sm:text-sm transition shadow-md whitespace-nowrap active:scale-95 shrink-0">
+                <span>⚡ اختر أي ملف للتحويل الفوري</span>
+                <input
+                  type="file"
+                  accept=".docx,.doc,.pptx,.ppt,.pdf,image/*,.png,.jpg,.jpeg,.webp"
+                  onChange={handleUniversalUpload}
+                  className="hidden"
+                />
+              </label>
             </div>
           </div>
 
-          {/* Card Body */}
-          {openCards.admins && (
-            <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-              {/* Role explanation */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-wrap gap-4 text-xs font-medium text-slate-700 dark:text-slate-300">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">👑</span>
-                  <span className="font-bold text-slate-900 dark:text-white">superadmin (مدير عام):</span>
-                  <span>كافة الصلاحيات + إضافة وتعديل وترقية وإزالة المدراء.</span>
+          {/* Clean 2-column quick actions (Images & JSON Import) — Word, PPTX, PDF boxes removed per user request */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 1. Image Upload & Parser */}
+            <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-2xl p-2 rounded-xl bg-purple-100 dark:bg-purple-900/60 shrink-0">🖼️</span>
+                <div className="min-w-0">
+                  <h4 className="font-extrabold text-purple-950 dark:text-purple-200 text-xs sm:text-sm">
+                    صور ومخططات تدفق (.png/.jpg)
+                  </h4>
+                  <p className="text-[11px] text-purple-800 dark:text-purple-300 font-semibold truncate">
+                    تحويل الصورة فوراً لوثيقة سياسة وإدراجها كمخطط معتمد
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">🛡️</span>
-                  <span className="font-bold text-slate-900 dark:text-white">admin (مدير):</span>
-                  <span>إضافة وتعديل وحذف السياسات ومراجعة الوثائق.</span>
+              </div>
+              <div>
+                <label className="cursor-pointer inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-800 hover:bg-purple-900 text-white font-bold text-xs transition shadow-sm shrink-0 whitespace-nowrap">
+                  <span>اختيار صورة</span>
+                  <input type="file" accept="image/*,.png,.jpg,.jpeg,.webp" onChange={handleImageUpload} className="hidden" />
+                </label>
+              </div>
+            </div>
+
+            {/* 2. Direct JSON Batch Importer */}
+            <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-2xl p-2 rounded-xl bg-amber-100 dark:bg-amber-900/60 shrink-0">📥</span>
+                <div className="min-w-0">
+                  <h4 className="font-extrabold text-amber-950 dark:text-amber-200 text-xs sm:text-sm">
+                    استيراد كود JSON ودفعات
+                  </h4>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 font-semibold truncate">
+                    لصق كود JSON أو رفع ملف دفعات لحفظه فوراً في السحابة
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">✏️</span>
-                  <span className="font-bold text-slate-900 dark:text-white">editor (محرر):</span>
-                  <span>إضافة وتعديل مسودات السياسات فقط بدون صلاحية الحذف.</span>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsJsonModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  <span>فتح مستورد JSON</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* PDF Page Selector Box with Local and Gemini options */}
+          {pdfFile && (
+            <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <h4 className="text-sm font-bold text-white">
+                      الملف المحدد: <span className="text-teal-400">{pdfFile.name}</span>
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    إجمالي صفحات الملف: <strong className="text-white">{pdfFile.totalPages}</strong> صفحة
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] bg-emerald-950 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-700">
+                    استخراج محلي فوري متاح
+                  </span>
+                  <span className="text-[11px] bg-teal-900/60 text-teal-300 px-2.5 py-0.5 rounded-full border border-teal-700">
+                    تحليل Gemini Flash AI
+                  </span>
                 </div>
               </div>
 
-              {/* Add New Admin Form (Superadmin only) */}
-              {isSuperAdmin ? (
-                <div className="p-4 sm:p-5 rounded-2xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800/60 space-y-3">
-                  <h4 className="text-xs sm:text-sm font-black text-teal-950 dark:text-teal-200 flex items-center gap-1.5">
-                    <span>➕</span>
-                    <span>اعتماد أو إضافة مستخدم جديد:</span>
-                  </h4>
-                  <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2.5">
-                    <input
-                      type="email"
-                      inputMode="email"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      dir="ltr"
-                      value={newAdminEmail}
-                      onChange={(e) => setNewAdminEmail(e.target.value)}
-                      placeholder="name@gmail.com"
-                      className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none shadow-sm"
-                    />
-                    <select
-                      value={newAdminRole}
-                      onChange={(e) => setNewAdminRole(e.target.value as AdminRole)}
-                      className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white outline-none shadow-sm cursor-pointer"
-                    >
-                      <option value="editor">✏️ editor (محرر)</option>
-                      <option value="admin">🛡️ admin (مدير)</option>
-                      <option value="superadmin">👑 superadmin (مدير عام)</option>
-                    </select>
-                    <button
-                      type="submit"
-                      className="px-6 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm cursor-pointer shrink-0"
-                    >
-                      <span>➕</span>
-                      <span>اعتماد المستخدم</span>
-                    </button>
-                  </form>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span>من صفحة:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={pdfFile.totalPages}
+                    value={pdfStartPage}
+                    onChange={(e) => setPdfStartPage(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-20 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-bold outline-none focus:ring-2 focus:ring-teal-400"
+                  />
                 </div>
-              ) : (
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  ℹ️ إضافة وتعديل صلاحيات المديرين متاحة لحساب المدير العام (superadmin) فقط.
-                </p>
-              )}
 
-              {/* Admins Interactive List */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300">
-                  قائمة الحسابات المعتمدة (يمكنك تغيير الدور مباشرة من القائمة):
-                </h4>
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span>إلى صفحة:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={pdfFile.totalPages}
+                    value={pdfEndPage}
+                    onChange={(e) => setPdfEndPage(Math.min(pdfFile.totalPages, parseInt(e.target.value, 10) || 1))}
+                    className="w-20 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-bold outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {adminList.map((a) => {
-                    const isSelf = a.email.toLowerCase() === currentUserEmail.trim().toLowerCase();
-                    return (
-                      <div
-                        key={a.email}
-                        className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                          isSelf
-                            ? 'bg-teal-50/40 dark:bg-teal-950/20 border-teal-300 dark:border-teal-700 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-xl shrink-0">
-                            {a.role === 'superadmin' ? '👑' : a.role === 'admin' ? '🛡️' : '✏️'}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate" dir="ltr">
-                                {a.email}
-                              </span>
-                              {isSelf && (
-                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-teal-600 text-white shrink-0">
-                                  أنت
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
-                              {a.role === 'superadmin' ? 'مدير عام بصلاحيات كاملة' : a.role === 'admin' ? 'مدير سياسات معتمد' : 'محرر ومراجع سياسات'}
-                            </span>
-                          </div>
-                        </div>
+                <div className="flex flex-wrap items-center gap-2 mr-auto">
+                  <button
+                    type="button"
+                    onClick={handleExtractPdfLocally}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    title="استخراج فوري للنصوص والشرائح محلياً داخل المتصفح بدون الحاجة لمفتاح API أو إنترنت"
+                  >
+                    <span>⚡</span>
+                    <span>استخراج محلي سريع (بدون API)</span>
+                  </button>
 
-                        {/* Interactive Role Switcher for Superadmin */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          {isSuperAdmin ? (
-                            <select
-                              value={a.role}
-                              onChange={(e) => handleRoleChange(a.email, e.target.value as AdminRole)}
-                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer focus:ring-2 focus:ring-teal-500 shadow-xs"
-                              title="تغيير وترقية نوع الحساب مباشرة"
-                            >
-                              <option value="editor">✏️ محرر (editor)</option>
-                              <option value="admin">🛡️ مدير (admin)</option>
-                              <option value="superadmin">👑 مدير عام (superadmin)</option>
-                            </select>
-                          ) : (
-                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                              {a.role}
-                            </span>
-                          )}
-
-                          {isSuperAdmin && !isSelf && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAdminEmail(a.email)}
-                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 p-1.5 rounded-lg transition cursor-pointer"
-                              title="إلغاء اعتماد هذا المدير"
-                            >
-                              <span className="text-sm font-bold">✕</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <button
+                    type="button"
+                    onClick={handleProcessPdfWithGemini}
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    title="تحليل وصياغة متقدمة بواسطة نموذج Gemini Flash AI"
+                  >
+                    <span>🤖</span>
+                    <span>تحليل ذكي بـ Gemini AI</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -906,274 +999,141 @@ export const AdminView: React.FC<AdminViewProps> = ({
         </div>
       )}
 
-      {/* Card 1: Smart AI Upload Engine (بطاقة مستقلة وقابلة للطي) */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-indigo-200 dark:border-indigo-900/40 shadow-sm overflow-hidden transition-all duration-300">
-        {/* Card Header (Clickable Accordion) */}
-        <div
-          onClick={() => toggleCard('converter')}
-          className="p-5 sm:p-6 bg-gradient-to-r from-indigo-50/60 via-white to-slate-50/50 dark:from-indigo-950/20 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-indigo-50/80 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-        >
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-              🚀
-            </div>
-            <div className="space-y-0.5">
+      {/* 3. Section: إدارة مديري الجودة والأدوار (Quality Managers & Roles) */}
+      {activeTopCard === 'admins' && canSeeAdmins && (
+        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div className="space-y-1">
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>محرك الرفع والتحويل الذكي (Smart AI Converter)</span>
+                <span>👥</span>
+                <span>إدارة مديري الجودة والأدوار (Quality Managers & Roles)</span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                استخراج المحتوى آلياً من ملفات Word أو PDF أو PowerPoint أو الصور وتحويلها لسياسات وشرائح
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                الأدوار: <b>editor (محرر)</b> يحرر السياسات — <b>admin (مدير)</b> يحذف ويرى القائمة — <b>superadmin (مدير عام)</b> يدير المديرين ويعدل الأدوار.
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-100/60 dark:bg-indigo-900/40">
-              <span>{openCards.converter ? 'طي البطاقة' : 'فتح أدوات التحويل والرفع'}</span>
-              <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.converter ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                ▼
-              </span>
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 self-start sm:self-auto">
+              {localAdmins.length} مديرين معتمدين
             </span>
           </div>
-        </div>
 
-        {openCards.converter && (
-          <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-            {/* Universal Fast Converter Banner */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-teal-900 via-slate-900 to-indigo-950 text-white border border-teal-500/40 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="text-3xl p-2 rounded-2xl bg-teal-500/20 border border-teal-500/30 shrink-0">🎯</span>
-            <div className="min-w-0">
-              <h4 className="text-sm sm:text-base font-black text-white">
-                المحول الشامل التلقائي (Word / PDF / PowerPoint / صور)
-              </h4>
-              <p className="text-xs text-slate-300 font-semibold mt-0.5">
-                اختر أي ملف بصيغة Word (.docx) أو PDF أو PowerPoint (.pptx) أو صورة (.png/.jpg) وسيقوم النظام فوراً باستخراج محتواه وبناء الشرائح
-              </p>
-            </div>
-          </div>
-          <div>
-            <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white font-black text-xs sm:text-sm transition shadow-md whitespace-nowrap active:scale-95 shrink-0">
-              <span>⚡ اختر أي ملف للتحويل الفوري</span>
+          {isSuperAdmin ? (
+            <form onSubmit={handleAddAdminEmail} className="flex flex-col sm:flex-row gap-2.5">
               <input
-                type="file"
-                accept=".docx,.doc,.pptx,.ppt,.pdf,image/*,.png,.jpg,.jpeg,.webp"
-                onChange={handleUniversalUpload}
-                className="hidden"
+                type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                dir="ltr"
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                placeholder="name@gmail.com"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
               />
-            </label>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* 1. Word Upload */}
-          <div className="p-5 rounded-2xl bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 text-center space-y-3 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="text-3xl">📄</span>
-              <h4 className="font-extrabold text-teal-950 dark:text-teal-200 text-sm">ملفات Word (.docx)</h4>
-              <p className="text-xs text-teal-800 dark:text-teal-300 leading-relaxed font-semibold">
-                استخراج فوري في المتصفح للجداول والفقرات وبناء الشرائح تلقائياً.
-              </p>
-            </div>
-            <div>
-              <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-sm">
-                <span>اختيار ملف Word</span>
-                <input type="file" accept=".docx,.doc" onChange={handleWordUpload} className="hidden" />
-              </label>
-            </div>
-          </div>
-
-          {/* 2. PowerPoint Upload */}
-          <div className="p-5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-center space-y-3 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="text-3xl">📽️</span>
-              <h4 className="font-extrabold text-indigo-950 dark:text-indigo-200 text-sm">عروض PowerPoint (.pptx)</h4>
-              <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed font-semibold">
-                قراءة واستخراج كافة الشرائح والنقاط والعناوين محلياً في ثوانٍ.
-              </p>
-            </div>
-            <div>
-              <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs transition shadow-sm">
-                <span>اختيار ملف .pptx</span>
-                <input type="file" accept=".pptx,.ppt" onChange={handlePptxUpload} className="hidden" />
-              </label>
-            </div>
-          </div>
-
-          {/* 3. PDF Upload */}
-          <div className="p-5 rounded-2xl bg-red-50/50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-center space-y-3 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="text-3xl">📑</span>
-              <h4 className="font-extrabold text-red-950 dark:text-red-200 text-sm">ملفات PDF (محلي + AI)</h4>
-              <p className="text-xs text-red-800 dark:text-red-300 leading-relaxed font-semibold">
-                استخراج محلي فوري أو معالجة ذكية بـ Gemini مع تحديد نطاق الصفحات.
-              </p>
-            </div>
-            <div>
-              <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-red-800 hover:bg-red-900 text-white font-bold text-xs transition shadow-sm">
-                <span>اختيار ملف PDF</span>
-                <input type="file" accept=".pdf" onChange={handlePdfUpload} className="hidden" />
-              </label>
-            </div>
-          </div>
-
-          {/* 4. Image Upload & Parser (No Cloudinary required) */}
-          <div className="p-5 rounded-2xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-center space-y-3 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="text-3xl">🖼️</span>
-              <h4 className="font-extrabold text-purple-950 dark:text-purple-200 text-sm">صور ومخططات (.png/.jpg)</h4>
-              <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed font-semibold">
-                تحويل الصورة فوراً لوثيقة سياسة وإدراجها كمخطط معتمد وبناء الشرائح.
-              </p>
-            </div>
-            <div>
-              <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-purple-800 hover:bg-purple-900 text-white font-bold text-xs transition shadow-sm">
-                <span>اختيار صورة / مخطط</span>
-                <input type="file" accept="image/*,.png,.jpg,.jpeg,.webp" onChange={handleImageUpload} className="hidden" />
-              </label>
-            </div>
-          </div>
-
-          {/* 5. Direct JSON Batch Importer */}
-          <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-center space-y-3 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="text-3xl">📥</span>
-              <h4 className="font-extrabold text-amber-950 dark:text-amber-200 text-sm">استيراد كود JSON ودفعات</h4>
-              <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed font-semibold">
-                الصق كود الـ JSON أو ارفع ملف دفعات ليظهر فوراً ويتحفظ بالسحابة.
-              </p>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={() => setIsJsonModalOpen(true)}
-                className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-sm cursor-pointer"
+              <select
+                value={newAdminRole}
+                onChange={(e) => setNewAdminRole(e.target.value as AdminRole)}
+                className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white outline-none cursor-pointer"
               >
-                <span>فتح مستورد JSON ⚡</span>
+                <option value="editor">محرر (editor)</option>
+                <option value="admin">مدير (admin)</option>
+                <option value="superadmin">مدير عام (superadmin)</option>
+              </select>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer shrink-0 active:scale-95"
+              >
+                <span>➕</span>
+                <span>اعتماد مدير</span>
               </button>
+            </form>
+          ) : (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-900">
+              إدارة المديرين وإضافة أو تعديل الصلاحيات متاحة لحسابات المدير العام (superadmin) فقط.
+            </p>
+          )}
+
+          {/* Table / Cards of Registered Admins with Role Changing Dropdown */}
+          <div className="space-y-2 pt-2">
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              قائمة المديرين المسجلين وتعديل الأدوار الفوري:
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {localAdmins.map((a) => {
+                const isCurrent = a.email.toLowerCase() === currentUserEmail.trim().toLowerCase();
+                return (
+                  <div
+                    key={a.email}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-lg shrink-0">
+                        {a.role === 'superadmin' ? '👑' : a.role === 'admin' ? '🛡️' : '✏️'}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate" dir="ltr">
+                            {a.email}
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                              حسابك
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {a.role === 'superadmin'
+                            ? 'مدير عام: كامل الصلاحيات وتعديل الأدوار'
+                            : a.role === 'admin'
+                            ? 'مدير: حذف السياسات ومراجعة القائمة'
+                            : 'محرر: إضافة وتعديل السياسات والشرائح'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Role Selector Dropdown - Allows modifying from editor to admin or vice versa for ANY email! */}
+                      {isSuperAdmin ? (
+                        <select
+                          value={a.role}
+                          onChange={(e) => handleRoleChange(a.email, e.target.value as AdminRole)}
+                          className="px-2.5 py-1 rounded-xl text-xs font-extrabold border border-teal-500/40 bg-white dark:bg-slate-900 text-teal-900 dark:text-teal-200 outline-none cursor-pointer shadow-2xs hover:border-teal-500 transition"
+                          title="تعديل دور هذا المستخدم"
+                        >
+                          <option value="editor">محرر (editor)</option>
+                          <option value="admin">مدير (admin)</option>
+                          <option value="superadmin">مدير عام (superadmin)</option>
+                        </select>
+                      ) : (
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                          {a.role}
+                        </span>
+                      )}
+
+                      {/* Remove Button */}
+                      {isSuperAdmin && !isCurrent && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdminEmail(a.email)}
+                          className="w-7 h-7 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/60 dark:hover:bg-red-900 dark:text-red-300 flex items-center justify-center transition cursor-pointer text-xs font-bold active:scale-95"
+                          title={`إزالة ${a.email}`}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
+      )}
 
-        {/* PDF Page Selector Box with Local and Gemini options */}
-        {pdfFile && (
-          <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                  <h4 className="text-sm font-bold text-white">
-                    الملف المحدد: <span className="text-teal-400">{pdfFile.name}</span>
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-400">
-                  إجمالي صفحات الملف: <strong className="text-white">{pdfFile.totalPages}</strong> صفحة
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] bg-emerald-950 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-700">
-                  استخراج محلي متاح
-                </span>
-                <span className="text-[11px] bg-teal-900/60 text-teal-300 px-2.5 py-0.5 rounded-full border border-teal-700">
-                  Gemini Flash AI
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2 text-xs font-bold">
-                <span>من صفحة:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={pdfFile.totalPages}
-                  value={pdfStartPage}
-                  onChange={(e) => setPdfStartPage(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  className="w-20 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-bold outline-none focus:ring-2 focus:ring-teal-400"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 text-xs font-bold">
-                <span>إلى صفحة:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={pdfFile.totalPages}
-                  value={pdfEndPage}
-                  onChange={(e) => setPdfEndPage(Math.min(pdfFile.totalPages, parseInt(e.target.value, 10) || 1))}
-                  className="w-20 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-bold outline-none focus:ring-2 focus:ring-teal-400"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mr-auto">
-                <button
-                  type="button"
-                  onClick={handleExtractPdfLocally}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer"
-                  title="استخراج فوري للنصوص والشرائح محلياً داخل المتصفح بدون الحاجة لمفتاح API أو إنترنت"
-                >
-                  <span>⚡</span>
-                  <span>استخراج محلي سريع (بدون API)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleProcessPdfWithGemini}
-                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer"
-                  title="تحليل وصياغة متقدمة بواسطة نموذج Gemini Flash AI"
-                >
-                  <span>🤖</span>
-                  <span>تحليل ذكي بـ Gemini AI</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-          </div>
-        )}
-      </div>
-
-      {/* Card 2: Policy Editor & Preview (بطاقة مستقلة وقابلة للطي) */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300">
-        {/* Card Header (Clickable Accordion) */}
-        <div
-          onClick={() => toggleCard('editor')}
-          className="p-5 sm:p-6 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-800/40 dark:via-slate-900 dark:to-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition border-b border-slate-100 dark:border-slate-800/80"
-        >
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-teal-700 text-white flex items-center justify-center text-xl shadow-sm shrink-0">
-              ✍️
-            </div>
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  محرر ومراجع السياسات ومنشئ العروض التقديمية
-                </h3>
-                {editingPolicy && (
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500 text-white">
-                    تعديل سياسة: {editingPolicy.code}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                تحرير وتنسيق الوثائق، وتعديل الشرائح، والمعاينة الحية الفورية بمحاكي المستندات والعرض
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200/60 dark:bg-slate-800">
-              <span>{openCards.editor ? 'طي المحرر' : 'فتح المحرر والمعاينة'}</span>
-              <span className="text-xs font-black transition-transform duration-200" style={{ transform: openCards.editor ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                ▼
-              </span>
-            </span>
-          </div>
-        </div>
-
-        {openCards.editor && (
-          <div className="p-6 sm:p-8 space-y-6 animate-fadeIn">
-            {/* Policy Quick Selector Banner */}
+      {/* 2. Section: محرر ومعاينة السياسة (Policy Editor & Preview) */}
+      {activeTopCard === 'editor' && (
+      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+        {/* Policy Quick Selector Banner */}
         {policies && policies.length > 0 && (
           <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -1726,9 +1686,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
             )}
           </div>
         )}
-          </div>
-        )}
       </div>
+      )}
 
       {/* JSON Batch Import Modal */}
       {isJsonModalOpen && onImportPolicies && (
@@ -1737,6 +1696,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           onClose={() => setIsJsonModalOpen(false)}
           onImportPolicies={onImportPolicies}
           onShowToast={onShowToast}
+          existingPolicies={policies || []}
         />
       )}
     </section>

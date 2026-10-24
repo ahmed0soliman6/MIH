@@ -209,13 +209,12 @@ export const App: React.FC = () => {
       if (!adminModeRef.current) {
         setPolicies(list);
       }
-    } catch (err: any) {
-      console.error('Failed to load static policy index:', err);
-      if (import.meta.env.DEV) {
+    } catch {
+      try {
         const defs = await loadDefaultPolicies();
         if (!adminModeRef.current) setPolicies(defs);
-      } else {
-        setInitialLoadError(err.message || 'تعذر تحميل فهرس السياسات.');
+      } catch (fallbackErr: any) {
+        setInitialLoadError('تعذر تحميل السياسات.');
       }
     } finally {
       setIsInitialLoading(false);
@@ -681,36 +680,51 @@ export const App: React.FC = () => {
     }
   };
 
-  // Import Batch Policies & Sync to Firestore
-  const handleImportBatchPolicies = async (imported: Policy[]) => {
+  // Import Batch Policies & Sync to Firestore with chunked upsert & progress
+  const handleImportBatchPolicies = async (
+    imported: Policy[],
+    onProgress?: (progress: { current: number; total: number; percent: number }) => void
+  ): Promise<{ addedCount?: number; updatedCount?: number } | void> => {
     if (isFirebaseConnected && (!adminRole || !currentUser?.email)) {
       showToast('سجّل الدخول بحساب مدير معتمد لاستيراد السياسات');
-      return;
+      throw new Error('سجّل الدخول بحساب مدير معتمد لاستيراد السياسات');
     }
-    setIsLoading(true);
-    setLoadingMessage(`جاري استيراد وحفظ (${imported.length}) سياسة في قاعدة البيانات السحابية...`);
-    try {
-      if (fbRef.current.db && currentUser?.email) {
-        const fb = await loadFirebase();
-        const res = await fb.upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email);
-        if (!res.success) throw new Error(res.error || 'فشل الحفظ السحابي');
-        schedulePublish();
-      }
 
-      const updated = [...policies];
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    if (fbRef.current.db && currentUser?.email) {
+      const fb = await loadFirebase();
+      const res = await fb.upsertPoliciesBatch(fbRef.current.db, imported, currentUser.email, onProgress);
+      if (!res.success) throw new Error(res.error || 'فشل الحفظ السحابي');
+      addedCount = res.addedCount;
+      updatedCount = res.updatedCount;
+      schedulePublish();
+    } else {
+      const existingIds = new Set(policies.map((p) => p.id));
+      imported.forEach((p) => {
+        if (existingIds.has(p.id)) updatedCount++;
+        else addedCount++;
+      });
+      if (onProgress) {
+        onProgress({ current: imported.length, total: imported.length, percent: 100 });
+      }
+    }
+
+    setPolicies((prev) => {
+      const updated = [...prev];
       imported.forEach((newP) => {
         const idx = updated.findIndex((p) => p.id === newP.id || p.code === newP.code);
-        if (idx !== -1) updated[idx] = newP;
-        else updated.unshift(newP);
+        if (idx !== -1) {
+          updated[idx] = { ...updated[idx], ...newP };
+        } else {
+          updated.unshift(newP);
+        }
       });
-      setPolicies(updated);
+      return updated;
+    });
 
-      setIsLoading(false);
-      showToast(`تم استيراد (${imported.length}) سياسات بنجاح وجدولة النشر`);
-    } catch (err: any) {
-      setIsLoading(false);
-      alert(`حدث خطأ أثناء الاستيراد: ${err.message || err}`);
-    }
+    return { addedCount, updatedCount };
   };
 
   // Save Settings (Firebase / Cloudinary)
@@ -745,13 +759,19 @@ export const App: React.FC = () => {
   };
 
   const handleUpdateAdminRole = async (email: string, role: AdminRole) => {
+    const clean = email.trim().toLowerCase();
+    setAdminList((prev) =>
+      prev.map((a) => (a.email.toLowerCase() === clean ? { ...a, role } : a))
+    );
     try {
       const fb = await loadFirebase();
-      await fb.updateAdminRole(fbRef.current.db, email, role);
+      await fb.updateAdminRole(fbRef.current.db, clean, role);
       await refreshAdminList();
-      showToast(`تم تغيير صلاحية ${email} إلى (${role}) بنجاح 👑`);
+      showToast(`تم تغيير صلاحية ${clean} إلى (${role}) بنجاح 👑`);
     } catch (e: any) {
+      await refreshAdminList();
       showToast(`تعذر تعديل الصلاحية: ${friendlyError(e)}`);
+      throw e;
     }
   };
 
@@ -759,50 +779,51 @@ export const App: React.FC = () => {
     <div
       className={
         darkMode
-          ? 'dark min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-teal-500 selection:text-white transition-colors duration-200'
-          : 'min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-teal-600 selection:text-white transition-colors duration-200'
+          ? 'dark min-h-screen flex bg-slate-950 text-slate-100 selection:bg-teal-500 selection:text-white transition-colors duration-200'
+          : 'min-h-screen flex bg-slate-50 text-slate-900 selection:bg-teal-600 selection:text-white transition-colors duration-200'
       }
     >
-      <Navbar
-        currentTab={currentTab}
-        onTabChange={handleTabChange}
+      {/* Permanent Full-Height Sidebar with Hospital Brand */}
+      <DepartmentSidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        policies={policies}
+        bundlesCount={bundles.length}
+        onSelectPolicy={handleOpenDocument}
+        onLaunchPresentation={handleOpenPresentation}
+        onSelectCategory={handleSelectCategory}
         selectedCategory={selectedCategory}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        activeReadingPolicy={activeDocPolicy}
-        onBackFromReading={() => setActiveDocPolicy(null)}
-        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+        currentTab={currentTab}
+        onNavigateTab={handleTabChange}
+        isAuthorizedAdmin={isAuthorizedAdmin}
+        currentUser={currentUser}
+        onLogin={handleOpenLogin}
+        onLogout={handleLogout}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
         lang={lang}
+        onToggleLanguage={toggleLanguage}
+        bookmarkedIds={bookmarkedIds}
+        onToggleBookmark={toggleBookmark}
+        onOpenBookmarks={handleOpenBookmarks}
       />
 
-      {/* Body Container: Permanent Full-Height Sidebar + Centered Main Content */}
-      <div className="flex-1 flex w-full">
-        <DepartmentSidebar
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          policies={policies}
-          bundlesCount={bundles.length}
-          onSelectPolicy={handleOpenDocument}
-          onLaunchPresentation={handleOpenPresentation}
-          onSelectCategory={handleSelectCategory}
-          selectedCategory={selectedCategory}
+      {/* Main Content Column */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        <Navbar
           currentTab={currentTab}
-          onNavigateTab={handleTabChange}
-          isAuthorizedAdmin={isAuthorizedAdmin}
-          currentUser={currentUser}
-          onLogin={handleOpenLogin}
-          onLogout={handleLogout}
-          darkMode={darkMode}
-          onToggleDarkMode={toggleDarkMode}
+          onTabChange={handleTabChange}
+          selectedCategory={selectedCategory}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          activeReadingPolicy={activeDocPolicy}
+          onBackFromReading={() => setActiveDocPolicy(null)}
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           lang={lang}
-          onToggleLanguage={toggleLanguage}
-          bookmarkedIds={bookmarkedIds}
-          onToggleBookmark={toggleBookmark}
-          onOpenBookmarks={handleOpenBookmarks}
         />
 
         {/* Main Views Container */}
-        <main className="flex-1 min-w-0 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-8">
+        <main className="flex-1 min-w-0 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-8">
           {initialLoadError && (
             <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-center space-y-3">
               <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
@@ -865,6 +886,7 @@ export const App: React.FC = () => {
               bookmarkedIds={bookmarkedIds}
               onToggleBookmark={toggleBookmark}
               searchTexts={searchTexts}
+              isLoading={isInitialLoading}
             />
           )}
 
@@ -908,10 +930,10 @@ export const App: React.FC = () => {
             </Suspense>
           )}
         </main>
-      </div>
 
-      {/* Footer */}
-      <Footer />
+        {/* Footer */}
+        <Footer />
+      </div>
 
       {/* Modals & Overlays */}
       <DocumentModal
@@ -924,6 +946,7 @@ export const App: React.FC = () => {
         lang={lang}
         isBookmarked={activeDocPolicy ? bookmarkedIds.includes(activeDocPolicy.id) : false}
         onToggleBookmark={toggleBookmark}
+        searchQuery={searchQuery}
       />
 
       <Suspense fallback={null}>

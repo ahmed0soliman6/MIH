@@ -48,10 +48,19 @@ async function validateJsonResponse(res: Response, urlDesc: string): Promise<any
 export async function loadPolicyIndex(): Promise<Policy[]> {
   try {
     const res = await fetch('/data/index.json', { cache: 'no-cache' });
-    const data = await validateJsonResponse(res, 'فهرس السياسات');
-
+    if (!res.ok) {
+      const mod = await import('../data/defaultPolicies');
+      return mod.DEFAULT_POLICIES;
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('json')) {
+      const mod = await import('../data/defaultPolicies');
+      return mod.DEFAULT_POLICIES;
+    }
+    const data = await res.json();
     if (!Array.isArray(data)) {
-      throw new Error('تنسيق فهرس السياسات غير متوقع (ليس مصفوفة).');
+      const mod = await import('../data/defaultPolicies');
+      return mod.DEFAULT_POLICIES;
     }
 
     return data.map((item: PolicySummary): Policy => ({
@@ -76,9 +85,9 @@ export async function loadPolicyIndex(): Promise<Policy[]> {
       _summary: true,
       _file: item.file
     }));
-  } catch (err: any) {
-    console.error('فشل جلب فهرس السياسات:', err);
-    throw new Error(err.message || 'تعذر تحميل فهرس السياسات من الخادم.');
+  } catch {
+    const mod = await import('../data/defaultPolicies');
+    return mod.DEFAULT_POLICIES;
   }
 }
 
