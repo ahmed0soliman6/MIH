@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Policy, CategoryKey } from '../types';
-import { CATEGORY_META } from '../data/meta';
-import { sanitizeHtml } from '../utils/sanitize';
-import { highlightHtmlText } from '../utils/arabic';
-import { Language, UI_STRINGS, CATEGORY_TRANSLATIONS } from '../utils/translations';
+import React, { useState, useEffect, useRef } from 'react';
+import { Policy } from '../types';
+import { Language, UI_STRINGS } from '../utils/translations';
 import { useDialogA11y } from '../hooks/useDialogA11y';
+import { OfficialDocument } from '../doc/OfficialDocument';
 
 interface DocumentModalProps {
   policy: Policy | null;
@@ -35,19 +33,19 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   const [readingProgress, setReadingProgress] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Default mode: 'reading' on mobile (< 768px), 'page' (A4) on larger screens
+  const [docMode, setDocMode] = useState<'page' | 'reading'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'reading';
+    }
+    return 'page';
+  });
+
+  const [zoomScale, setZoomScale] = useState<number>(1);
+  const [showWatermark, setShowWatermark] = useState<boolean>(false);
+
   const t = UI_STRINGS[lang] || UI_STRINGS.ar;
   const isEn = lang === 'en';
-
-  // Calculate highlighted HTML and match count
-  const { renderedHtml, matchCount } = useMemo(() => {
-    if (!policy?.content_html) return { renderedHtml: '', matchCount: 0 };
-    const clean = sanitizeHtml(policy.content_html);
-    if (!searchQuery || !searchQuery.trim()) {
-      return { renderedHtml: clean, matchCount: 0 };
-    }
-    const res = highlightHtmlText(clean, searchQuery.trim());
-    return { renderedHtml: res.html, matchCount: res.matchCount };
-  }, [policy?.content_html, searchQuery]);
 
   // Reset scroll and progress on policy change
   useEffect(() => {
@@ -57,7 +55,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     }
   }, [isOpen, policy?.id]);
 
-  // التمرير التلقائي السلس إلى أول نتيجة بحث مظللة (Auto-scroll to first match)
+  // Auto-scroll to first search highlight if present
   useEffect(() => {
     if (isOpen && searchQuery && searchQuery.trim()) {
       const timer = setTimeout(() => {
@@ -68,7 +66,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, policy?.id, searchQuery, matchCount]);
+  }, [isOpen, policy?.id, searchQuery]);
 
   // Handle scroll progress
   const handleScroll = () => {
@@ -83,18 +81,8 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     setReadingProgress(currentProgress);
   };
 
-  if (!isOpen || !policy) return null;
-
-  const catKey = policy.category as CategoryKey;
-  const meta = (CATEGORY_META as Record<string, any>)[catKey] || {
-    name: policy.category || 'القسم المعتمد',
-    badge: 'bg-teal-100 text-teal-800 border-teal-200',
-    icon: '📋',
-    desc: policy.category || ''
-  };
-  const catTrans = (CATEGORY_TRANSLATIONS[lang] as Record<string, any>)?.[catKey] || {
-    name: meta.name,
-    desc: meta.desc
+  const handlePrint = () => {
+    window.print();
   };
 
   const handleSafeClose = (e?: React.SyntheticEvent) => {
@@ -105,14 +93,11 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     onClose();
   };
 
-  const currentFormattedDate = new Intl.DateTimeFormat(isEn ? 'en-US' : 'ar-EG', {
-    dateStyle: 'full',
-    timeStyle: 'short'
-  }).format(new Date());
+  if (!isOpen || !policy) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overscroll-contain"
+      className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-1 sm:p-4 overscroll-contain"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           handleSafeClose(e);
@@ -124,15 +109,15 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     >
       <div
         ref={dialogRef}
-        className="modal-enter bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 max-w-4xl w-full h-[94vh] sm:h-[92vh] shadow-2xl overflow-hidden flex flex-col transition-colors relative"
+        className="modal-enter bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 max-w-5xl w-full h-[96vh] sm:h-[94vh] shadow-2xl overflow-hidden flex flex-col transition-colors relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Toolbar */}
-        <div className="bg-slate-900 dark:bg-slate-950 text-white px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0 no-print z-20">
+        <div className="bg-slate-900 dark:bg-slate-950 text-white px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0 no-print z-20">
           
-          {/* Policy Info Title in Toolbar */}
+          {/* Policy Info in Toolbar */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-lg sm:text-xl shrink-0">📖</span>
+            <span className="text-base sm:text-lg shrink-0">🏛️</span>
             <div className="min-w-0">
               <span className="font-extrabold text-xs sm:text-sm block truncate text-slate-100">
                 {policy.title}
@@ -141,33 +126,70 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
                 {policy.code} • {t.policyDocApproved} ({readingProgress}%)
               </span>
             </div>
-            {matchCount > 0 && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-400 text-amber-950 shrink-0 shadow-xs animate-pulse">
-                <span>🔍</span>
-                <span>{matchCount} مطابقة للبحث</span>
-              </span>
-            )}
           </div>
 
-          {/* Action Buttons: Presentation, Bookmark Heart Toggle, Edit, & Close (PDF report button removed per request) */}
+          {/* Action Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Interactive Bookmark Button in Toolbar */}
+            {/* View Mode Toggle (Page vs Reading) */}
+            <div className="hidden sm:flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 text-xs">
+              <button
+                type="button"
+                onClick={() => setDocMode('page')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  docMode === 'page'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="عرض ورقة A4 الرسمية"
+              >
+                📄 ورقة A4
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocMode('reading')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  docMode === 'reading'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="عرض القراءة المرنة"
+              >
+                📱 قراءة
+              </button>
+            </div>
+
+            {/* Zoom Controls for Page Mode */}
+            {docMode === 'page' && (
+              <div className="hidden md:flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded-xl border border-slate-700 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={() => setZoomScale((z) => Math.max(0.7, Number((z - 0.1).toFixed(1))))}
+                  className="px-1 text-slate-400 hover:text-white cursor-pointer font-bold"
+                  title="تصغير"
+                >
+                  -
+                </button>
+                <span className="text-slate-300 min-w-[36px] text-center">{Math.round(zoomScale * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoomScale((z) => Math.min(1.4, Number((z + 0.1).toFixed(1))))}
+                  className="px-1 text-slate-400 hover:text-white cursor-pointer font-bold"
+                  title="تكبير"
+                >
+                  +
+                </button>
+              </div>
+            )}
+
+            {/* Print / Save PDF Button */}
             <button
               type="button"
-              onClick={() => onToggleBookmark?.(policy.id)}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer border active:scale-95 ${
-                isBookmarked
-                  ? 'bg-rose-700 hover:bg-rose-600 text-white border-rose-600'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white'
-              }`}
-              title={isBookmarked ? t.removeFromBookmarks : t.addToBookmarks}
+              onClick={handlePrint}
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1 shadow-sm cursor-pointer border border-slate-700"
+              title="طباعة الوثيقة الرسمية أو حفظها كـ PDF"
             >
-              <span className="text-sm transition-transform duration-200 hover:scale-125">
-                {isBookmarked ? '❤️' : '🤍'}
-              </span>
-              <span className="hidden sm:inline">
-                {isBookmarked ? t.bookmarks : t.addToBookmarks}
-              </span>
+              <span>🖨️</span>
+              <span className="hidden sm:inline">طباعة / PDF</span>
             </button>
 
             {/* Slides Presentation Button */}
@@ -182,6 +204,20 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
             >
               <span>📽️</span>
               <span className="hidden sm:inline">{t.slides}</span>
+            </button>
+
+            {/* Bookmark Heart Button */}
+            <button
+              type="button"
+              onClick={() => onToggleBookmark?.(policy.id)}
+              className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1 cursor-pointer border active:scale-95 ${
+                isBookmarked
+                  ? 'bg-rose-700 hover:bg-rose-600 text-white border-rose-600'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white'
+              }`}
+              title={isBookmarked ? t.removeFromBookmarks : t.addToBookmarks}
+            >
+              <span className="text-sm">{isBookmarked ? '❤️' : '🤍'}</span>
             </button>
 
             {/* Admin Edit Policy Button */}
@@ -200,12 +236,12 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
               </button>
             )}
 
-            {/* Prominent, Responsive Close Button (Touch Friendly 44x44px target) */}
+            {/* Close Button */}
             <button
               type="button"
               onClick={handleSafeClose}
               onTouchEnd={handleSafeClose}
-              className="min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-800 hover:bg-red-600 active:bg-red-700 text-white flex items-center justify-center font-black text-lg transition-all shadow-md cursor-pointer border border-slate-700 active:scale-95"
+              className="min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px] w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800 hover:bg-red-600 active:bg-red-700 text-white flex items-center justify-center font-black text-base transition-all shadow-md cursor-pointer border border-slate-700 active:scale-95"
               title={t.close}
               aria-label={t.close}
             >
@@ -215,133 +251,30 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
         </div>
 
         {/* Animated Reading Progress Bar */}
-        <div className="w-full h-1.5 bg-slate-800 shrink-0 overflow-hidden relative no-print">
+        <div className="w-full h-1 bg-slate-800 shrink-0 overflow-hidden relative no-print">
           <div
             className="h-full bg-gradient-to-l from-teal-400 via-emerald-400 to-teal-500 transition-all duration-150 ease-out"
             style={{ width: `${readingProgress}%` }}
           />
-          <div
-            className="absolute top-0 bottom-0 w-3 bg-white/70 blur-xs transition-all duration-150"
-            style={{ [isEn ? 'left' : 'right']: `calc(${100 - readingProgress}% - 6px)` }}
-          />
         </div>
 
-        {/* Scrollable Document Content */}
+        {/* Scrollable Container with Official Document */}
         <div
-          id="printable-policy-document"
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          style={{ WebkitOverflowScrolling: 'touch' }}
-          className="flex-1 overflow-y-auto overscroll-contain custom-scroll p-4 sm:p-10 space-y-6 print-document-mode text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 select-text"
+          className={`flex-1 overflow-y-auto overscroll-contain custom-scroll select-text ${
+            docMode === 'page'
+              ? 'bg-slate-200/70 dark:bg-slate-950 p-2 sm:p-6'
+              : 'bg-white dark:bg-slate-900 p-3 sm:p-8'
+          }`}
         >
-
-          {/* Policy Title & Accreditation Category Meta + Heart Bookmark Button */}
-          <div className="space-y-2 relative">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className={`text-xs font-extrabold px-3 py-1 rounded-full border inline-block ${meta.badge} shadow-2xs`}>
-                {policy.code} • {catTrans.name}
-              </span>
-
-              {isBookmarked && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-0.5 rounded-full border border-rose-200 dark:border-rose-900">
-                  <span>❤️</span>
-                  <span>{t.bookmarks}</span>
-                </span>
-              )}
-            </div>
-
-            {/* Title with Interactive Heart Button directly beside it */}
-            <div className="flex items-start justify-between gap-3 pt-1">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug flex-1">
-                {policy.title}
-              </h1>
-
-              {/* Heart Button right next to title */}
-              <button
-                type="button"
-                onClick={() => onToggleBookmark?.(policy.id)}
-                className={`p-2 sm:px-3 sm:py-2 rounded-2xl border transition-all active:scale-90 flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 select-none group ${
-                  isBookmarked
-                    ? 'bg-rose-50 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-500 hover:bg-rose-50/50 border-slate-200 dark:border-slate-700'
-                }`}
-                title={isBookmarked ? t.removeFromBookmarks : t.addToBookmarks}
-                aria-label={isBookmarked ? t.removeFromBookmarks : t.addToBookmarks}
-              >
-                <span className="text-lg sm:text-xl transition-transform group-hover:scale-125 duration-200">
-                  {isBookmarked ? '❤️' : '🤍'}
-                </span>
-                <span className="text-xs font-bold hidden xs:inline">
-                  {isBookmarked ? t.bookmarks : t.addToBookmarks}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Formal Metadata Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden shadow-2xs">
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                <tr className="bg-slate-50 dark:bg-slate-950/40">
-                  <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300 w-1/4">
-                    {t.applicableDepts}
-                  </td>
-                  <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {policy.dept}
-                  </td>
-                  <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300 w-1/5">
-                    {t.responsibilities}
-                  </td>
-                  <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {Array.isArray(policy.responsibilities)
-                      ? policy.responsibilities.join(' • ')
-                      : (policy.responsibilities || (isEn ? 'Medical, Nursing and Quality Teams' : 'الأطباء والتمريض وفريق الجودة'))}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300">
-                    {t.effectiveDate}
-                  </td>
-                  <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {policy.effectiveDate || '—'}
-                  </td>
-                  <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300">
-                    {t.reviewDate}
-                  </td>
-                  <td className="p-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    {policy.reviewDate || '—'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Purpose Box with Accent Bar */}
-          <div className="p-4 rounded-xl bg-teal-50/90 dark:bg-teal-950/60 border-r-4 border-teal-600 dark:border-teal-400 text-teal-950 dark:text-teal-100 space-y-1.5 shadow-2xs relative overflow-hidden">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-teal-600 dark:bg-teal-400 inline-block no-print" />
-              <h4 className="text-xs font-black text-teal-900 dark:text-teal-200 uppercase tracking-wide">
-                {t.purposeTitle}
-              </h4>
-            </div>
-            <p className="text-sm font-semibold leading-relaxed text-teal-950 dark:text-teal-100">{policy.purpose}</p>
-          </div>
-
-          {/* Full Rich HTML Content with smooth reading lines & search highlight */}
-          <div
-            className="policy-content-html border-t border-slate-200 dark:border-slate-800 pt-4 text-slate-900 dark:text-slate-100 leading-relaxed font-normal"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
+          <OfficialDocument
+            policy={policy}
+            mode={docMode}
+            watermark={showWatermark}
+            searchQuery={searchQuery}
+            zoomScale={zoomScale}
           />
-
-          {/* Footer info with Hospital Branding & Date */}
-          <div className="mt-8 pt-4 border-t border-slate-300 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 gap-2 font-mono">
-            <div>
-              <span>🏥 {t.reportFooterHospital}</span> • <span>{t.reportFooterConfidential}</span>
-            </div>
-            <div className="text-teal-700 dark:text-teal-400 font-bold">
-              {t.reportGeneratedAt} {currentFormattedDate}
-            </div>
-          </div>
         </div>
       </div>
     </div>

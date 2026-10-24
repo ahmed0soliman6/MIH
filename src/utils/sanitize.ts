@@ -25,9 +25,37 @@ export function sanitizeHtml(html: string | undefined | null): string {
   ensureHook();
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
+    ALLOW_DATA_ATTR: true,
+    ADD_TAGS: [
+      'section',
+      'figure',
+      'figcaption',
+      'bdi',
+      'mark',
+      'sup',
+      'sub',
+      'table',
+      'thead',
+      'tbody',
+      'tr',
+      'th',
+      'td',
+      'colgroup',
+      'col'
+    ],
+    ADD_ATTR: [
+      'target',
+      'class',
+      'dir',
+      'lang',
+      'colspan',
+      'rowspan',
+      'alt',
+      'src',
+      'loading'
+    ],
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed', 'link', 'meta', 'base'],
     FORBID_ATTR: ['srcset', 'formaction'],
-    ADD_ATTR: ['target'],
   });
 }
 
