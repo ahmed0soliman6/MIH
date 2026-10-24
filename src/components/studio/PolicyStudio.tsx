@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Policy, CategoryKey } from '../../types';
+import { Policy, CategoryKey, Slide } from '../../types';
 import { StudioHeader } from './StudioHeader';
 import { FastWriter } from './FastWriter';
 import { StudioMetadataPanel } from './StudioMetadataPanel';
 import { SmartPasteDrawer } from './SmartPasteDrawer';
+import { BlockEditor } from './BlockEditor';
+import { HtmlEditor } from './HtmlEditor';
+import { SlidesEditor } from './SlidesEditor';
+import { DiffSummaryModal } from './DiffSummaryModal';
 import { useStudioDraft, StudioDraftState } from './useStudioDraft';
 import { OfficialDocument } from '../../doc/OfficialDocument';
 import { smartParseText } from '../../doc/smartParse';
 import { serializeBlocksToHtml } from '../../doc/serialize';
 import { parseHtmlToBlocks } from '../../doc/parse';
 import { htmlToText, sanitizeHtml } from '../../utils/sanitize';
+import { Block } from '../../doc/model';
 
 interface PolicyStudioProps {
   policy: Policy | null;
@@ -28,6 +33,9 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
   onShowToast,
   onSelectPolicy,
 }) => {
+  // Mode state: 'fast' | 'blocks' | 'html' | 'slides'
+  const [contentMode, setContentMode] = useState<'fast' | 'blocks' | 'html' | 'slides'>('fast');
+
   // Metadata state
   const [title, setTitle] = useState(policy?.title || '');
   const [code, setCode] = useState(policy?.code || '');
@@ -45,14 +53,25 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
 
   // Content state
   const [rawText, setRawText] = useState(policy?.plain_text || '');
+  const [htmlContent, setHtmlContent] = useState(policy?.content_html || '');
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [originalBlocks, setOriginalBlocks] = useState<Block[]>([]);
+  const [slides, setSlides] = useState<Slide[]>(policy?.slides || []);
+
+  // History state for Undo/Redo (max 100)
+  const [blocksHistory, setBlocksHistory] = useState<Block[][]>([[]]);
+  const [historyIdx, setHistoryIdx] = useState<number>(0);
+
+  // UI state
   const [isSaving, setIsSaving] = useState(false);
+  const [showDiffModal, setShowDiffModal] = useState(false);
   const [isSmartPasteOpen, setIsSmartPasteOpen] = useState(false);
   const [isMetadataCollapsed, setIsMetadataCollapsed] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
   const [mobileActiveView, setMobileActiveView] = useState<'editor' | 'preview'>('editor');
 
-  // Convert initial policy content_html to text if rawText is empty
+  // Initialize or reset policy data
   useEffect(() => {
     if (policy) {
       setTitle(policy.title || '');
@@ -68,11 +87,44 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
           : policy.responsibilities || ''
       );
       setPurpose(policy.purpose || '');
+      setSlides(policy.slides || []);
+
+      let initialBlocks: Block[] = [];
+      if (policy.content_html) {
+        initialBlocks = parseHtmlToBlocks(policy.content_html);
+        setHtmlContent(policy.content_html);
+      } else if (policy.plain_text) {
+        initialBlocks = smartParseText(policy.plain_text).blocks;
+        setHtmlContent(serializeBlocksToHtml(initialBlocks));
+      }
+
+      setBlocks(initialBlocks);
+      setOriginalBlocks(initialBlocks);
+      setBlocksHistory([initialBlocks]);
+      setHistoryIdx(0);
+
       if (policy.plain_text) {
         setRawText(policy.plain_text);
       } else if (policy.content_html) {
         setRawText(htmlToText(policy.content_html));
       }
+    } else {
+      setTitle('');
+      setCode('');
+      setCategory('QPI');
+      setDept('جميع أقسام المستشفى');
+      setVersion('1.0');
+      setEffectiveDate('');
+      setReviewDate('');
+      setResponsibilities('');
+      setPurpose('');
+      setRawText('');
+      setHtmlContent('');
+      setBlocks([]);
+      setOriginalBlocks([]);
+      setBlocksHistory([[]]);
+      setHistoryIdx(0);
+      setSlides([]);
     }
   }, [policy]);
 
@@ -86,7 +138,7 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
       version,
       purpose,
       rawText,
-      contentHtml: '',
+      contentHtml: htmlContent,
       effectiveDate,
       reviewDate,
       responsibilities,
@@ -99,6 +151,7 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
       version,
       purpose,
       rawText,
+      htmlContent,
       effectiveDate,
       reviewDate,
       responsibilities,
@@ -116,6 +169,13 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
     setResponsibilities(draft.responsibilities || '');
     setPurpose(draft.purpose || '');
     setRawText(draft.rawText || '');
+    if (draft.rawText) {
+      const parsed = smartParseText(draft.rawText).blocks;
+      setBlocks(parsed);
+      setHtmlContent(serializeBlocksToHtml(parsed));
+      setBlocksHistory([parsed]);
+      setHistoryIdx(0);
+    }
     onShowToast('تمت استعادة المسودة بنجاح');
   };
 
@@ -128,7 +188,78 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
     isDirty,
   } = useStudioDraft(policy?.id, draftState, handleRestoreDraft);
 
-  // Debounced live preview HTML generation (~150ms)
+  // Push new blocks state with max 100 history entries
+  const pushBlocksHistory = useCallback(
+    (newBlocks: Block[]) => {
+      setBlocks(newBlocks);
+      const html = serializeBlocksToHtml(newBlocks);
+      setHtmlContent(html);
+
+      setBlocksHistory((prev) => {
+        const upToCurrent = prev.slice(0, historyIdx + 1);
+        const next = [...upToCurrent, newBlocks];
+        if (next.length > 100) next.shift();
+        return next;
+      });
+      setHistoryIdx((prev) => Math.min(prev + 1, 99));
+    },
+    [historyIdx]
+  );
+
+  // Undo / Redo
+  const handleUndo = useCallback(() => {
+    if (historyIdx > 0) {
+      const nextIdx = historyIdx - 1;
+      setHistoryIdx(nextIdx);
+      const targetBlocks = blocksHistory[nextIdx];
+      setBlocks(targetBlocks);
+      const html = serializeBlocksToHtml(targetBlocks);
+      setHtmlContent(html);
+      setRawText(htmlToText(html));
+    }
+  }, [historyIdx, blocksHistory]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIdx < blocksHistory.length - 1) {
+      const nextIdx = historyIdx + 1;
+      setHistoryIdx(nextIdx);
+      const targetBlocks = blocksHistory[nextIdx];
+      setBlocks(targetBlocks);
+      const html = serializeBlocksToHtml(targetBlocks);
+      setHtmlContent(html);
+      setRawText(htmlToText(html));
+    }
+  }, [historyIdx, blocksHistory]);
+
+  // Mode change handler with seamless bidirectional sync
+  const handleModeChange = (newMode: 'fast' | 'blocks' | 'html' | 'slides') => {
+    if (newMode === contentMode) return;
+
+    if (contentMode === 'fast') {
+      if (rawText.trim()) {
+        const parsed = smartParseText(rawText).blocks;
+        setBlocks(parsed);
+        const html = serializeBlocksToHtml(parsed);
+        setHtmlContent(html);
+        pushBlocksHistory(parsed);
+      }
+    } else if (contentMode === 'blocks') {
+      const html = serializeBlocksToHtml(blocks);
+      setHtmlContent(html);
+      setRawText(htmlToText(html));
+    } else if (contentMode === 'html') {
+      if (htmlContent.trim()) {
+        const parsed = parseHtmlToBlocks(htmlContent);
+        setBlocks(parsed);
+        setRawText(htmlToText(htmlContent));
+        pushBlocksHistory(parsed);
+      }
+    }
+
+    setContentMode(newMode);
+  };
+
+  // Debounced live preview HTML generation (~150ms) for fast writer
   const [debouncedRawText, setDebouncedRawText] = useState(rawText);
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -139,12 +270,24 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
 
   // Generate live preview policy object
   const previewPolicy = useMemo(() => {
-    let contentHtml = '';
-    if (debouncedRawText.trim()) {
-      const parsed = smartParseText(debouncedRawText);
-      contentHtml = serializeBlocksToHtml(parsed.blocks);
-    } else if (policy?.content_html) {
-      contentHtml = policy.content_html;
+    let currentHtml = '';
+    if (contentMode === 'fast') {
+      if (debouncedRawText.trim()) {
+        const parsed = smartParseText(debouncedRawText);
+        currentHtml = serializeBlocksToHtml(parsed.blocks);
+      } else if (policy?.content_html) {
+        currentHtml = policy.content_html;
+      }
+    } else if (contentMode === 'blocks') {
+      currentHtml = serializeBlocksToHtml(blocks);
+    } else if (contentMode === 'html') {
+      currentHtml = htmlContent;
+    } else if (contentMode === 'slides') {
+      currentHtml = serializeBlocksToHtml(blocks);
+    }
+
+    if (!currentHtml && policy?.content_html) {
+      currentHtml = policy.content_html;
     }
 
     return {
@@ -158,12 +301,16 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
       reviewDate: reviewDate || '—',
       responsibilities: responsibilities || '—',
       purpose: purpose || '—',
-      content_html: contentHtml,
-      plain_text: debouncedRawText,
-      slides: policy?.slides || [],
+      content_html: currentHtml,
+      plain_text: contentMode === 'fast' ? debouncedRawText : htmlToText(currentHtml),
+      slides: slides,
     };
   }, [
+    contentMode,
     debouncedRawText,
+    blocks,
+    htmlContent,
+    slides,
     title,
     code,
     category,
@@ -176,8 +323,80 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
     policy,
   ]);
 
-  // Handle Save
-  const handleSave = useCallback(async () => {
+  // Perform actual save
+  const performActualSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      let finalHtml = '';
+      if (contentMode === 'fast') {
+        const parsed = smartParseText(rawText);
+        finalHtml = serializeBlocksToHtml(parsed.blocks);
+      } else if (contentMode === 'blocks') {
+        finalHtml = serializeBlocksToHtml(blocks);
+      } else if (contentMode === 'html') {
+        finalHtml = htmlContent;
+      } else if (contentMode === 'slides') {
+        finalHtml = serializeBlocksToHtml(blocks);
+      }
+
+      if (!finalHtml.trim()) {
+        finalHtml = '<p>لا يوجد محتوى</p>';
+      }
+
+      const cleanHtml = sanitizeHtml(finalHtml);
+      const plainText = htmlToText(cleanHtml) || rawText;
+
+      const policyPayload: Policy = {
+        id: policy?.id || `pol-${Date.now()}`,
+        title: title.trim(),
+        code: code.trim(),
+        category: category.trim() || 'QPI',
+        dept: dept.trim() || 'جميع أقسام المستشفى',
+        version: version.trim() || '1.0',
+        date: effectiveDate.trim() || undefined,
+        effectiveDate: effectiveDate.trim() || undefined,
+        reviewDate: reviewDate.trim() || undefined,
+        responsibilities: responsibilities.trim() || undefined,
+        purpose: purpose.trim() || '',
+        content_html: cleanHtml,
+        plain_text: plainText,
+        slides: slides,
+        updated_at: new Date().toISOString(),
+      };
+
+      await onSave(policyPayload);
+      clearDraft();
+      setOriginalBlocks(contentMode === 'blocks' ? blocks : parseHtmlToBlocks(cleanHtml));
+      onShowToast('تم حفظ السياسة بنجاح!');
+    } catch (err: any) {
+      console.error('Failed to save policy:', err);
+      onShowToast(err.message || 'حدث خطأ أثناء حفظ السياسة');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    contentMode,
+    rawText,
+    blocks,
+    htmlContent,
+    slides,
+    title,
+    code,
+    category,
+    dept,
+    version,
+    effectiveDate,
+    reviewDate,
+    responsibilities,
+    purpose,
+    policy,
+    onSave,
+    clearDraft,
+    onShowToast,
+  ]);
+
+  // Initiate Save (checks diff modal if applicable)
+  const handleSaveInitiate = useCallback(() => {
     if (!title.trim()) {
       onShowToast('يرجى إدخال عنوان السياسة');
       return;
@@ -198,79 +417,60 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
       return;
     }
 
-    if (rawText.length > 300000) {
-      onShowToast('حجم المحتوى يتجاوز الحد الأقصى المسموح به (300,000 حرف)');
+    if (rawText.length > 300000 || htmlContent.length > 500000) {
+      onShowToast('حجم المحتوى يتجاوز الحد الأقصى المسموح به');
       return;
     }
 
-    setIsSaving(true);
-    try {
-      // Smart parse text into blocks and serialize into clean HTML
-      const parsed = smartParseText(rawText);
-      const generatedHtml = serializeBlocksToHtml(parsed.blocks);
-      const cleanHtml = sanitizeHtml(generatedHtml || '<p>لا يوجد محتوى</p>');
-      const plainText = htmlToText(cleanHtml) || rawText;
-
-      const policyPayload: Policy = {
-        id: policy?.id || `pol-${Date.now()}`,
-        title: title.trim(),
-        code: code.trim(),
-        category: category.trim() || 'QPI',
-        dept: dept.trim() || 'جميع أقسام المستشفى',
-        version: version.trim() || '1.0',
-        date: effectiveDate.trim() || undefined,
-        effectiveDate: effectiveDate.trim() || undefined,
-        reviewDate: reviewDate.trim() || undefined,
-        responsibilities: responsibilities.trim() || undefined,
-        purpose: purpose.trim() || '',
-        content_html: cleanHtml,
-        plain_text: plainText,
-        slides: policy?.slides || [],
-        updated_at: new Date().toISOString(),
-      };
-
-      await onSave(policyPayload);
-      clearDraft();
-      onShowToast('تم حفظ السياسة بنجاح!');
-    } catch (err: any) {
-      console.error('Failed to save policy:', err);
-      onShowToast(err.message || 'حدث خطأ أثناء حفظ السياسة');
-    } finally {
-      setIsSaving(false);
+    // Show diff modal if modifying an existing policy with existing blocks
+    if (policy?.id && originalBlocks.length > 0 && contentMode === 'blocks') {
+      const hasChanges = JSON.stringify(originalBlocks) !== JSON.stringify(blocks);
+      if (hasChanges) {
+        setShowDiffModal(true);
+        return;
+      }
     }
+
+    performActualSave();
   }, [
     title,
     code,
-    category,
-    dept,
-    version,
-    effectiveDate,
-    reviewDate,
-    responsibilities,
-    purpose,
-    rawText,
-    policy,
     existingPolicies,
-    onSave,
-    clearDraft,
+    policy,
+    rawText,
+    htmlContent,
+    originalBlocks,
+    blocks,
+    contentMode,
     onShowToast,
+    performActualSave,
   ]);
 
-  // Keyboard Shortcuts: Ctrl+S to save, Ctrl+Enter for fullscreen preview
+  // Keyboard Shortcuts: Ctrl+S to save, Ctrl+Z / Ctrl+Shift+Z for undo/redo, Ctrl+Enter for preview
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        handleSave();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        handleSaveInitiate();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         setIsFullscreenPreview((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && contentMode === 'blocks') {
+        if (e.shiftKey && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          handleRedo();
+        } else if (e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          handleRedo();
+        } else if (e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          handleUndo();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave]);
+  }, [handleSaveInitiate, handleUndo, handleRedo, contentMode]);
 
   const handlePrint = () => {
     window.print();
@@ -285,12 +485,16 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
         isDirty={isDirty}
         lastSavedTime={lastSavedTime}
         isSaving={isSaving}
-        onSave={handleSave}
+        onSave={handleSaveInitiate}
         onPrint={handlePrint}
         onToggleFullscreenPreview={() => setIsFullscreenPreview(true)}
         onClose={onClose}
         activeView={mobileActiveView}
         onChangeActiveView={setMobileActiveView}
+        contentMode={contentMode}
+        onChangeContentMode={handleModeChange}
+        blocksCount={blocks.length}
+        slidesCount={slides.length}
         existingPolicies={existingPolicies}
         currentPolicyId={policy?.id}
         onSelectPolicy={onSelectPolicy}
@@ -324,17 +528,48 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Right Pane: Fast Writer Editor */}
+        {/* Right Pane: Active Content Mode Editor */}
         <div
           className={`flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto ${
             mobileActiveView === 'preview' ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          <FastWriter
-            value={rawText}
-            onChange={setRawText}
-            onOpenSmartPaste={() => setIsSmartPasteOpen(true)}
-          />
+          {contentMode === 'fast' && (
+            <FastWriter
+              value={rawText}
+              onChange={setRawText}
+              onOpenSmartPaste={() => setIsSmartPasteOpen(true)}
+            />
+          )}
+
+          {contentMode === 'blocks' && (
+            <BlockEditor
+              blocks={blocks}
+              onChangeBlocks={pushBlocksHistory}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              canUndo={historyIdx > 0}
+              canRedo={historyIdx < blocksHistory.length - 1}
+            />
+          )}
+
+          {contentMode === 'html' && (
+            <HtmlEditor
+              value={htmlContent}
+              onChange={setHtmlContent}
+            />
+          )}
+
+          {contentMode === 'slides' && (
+            <SlidesEditor
+              slides={slides}
+              onChangeSlides={setSlides}
+              contentHtml={previewPolicy.content_html}
+              policyTitle={title}
+              policyCode={code}
+              onShowToast={onShowToast}
+            />
+          )}
         </div>
 
         {/* Collapsible Metadata Panel */}
@@ -427,8 +662,24 @@ export const PolicyStudio: React.FC<PolicyStudioProps> = ({
         onClose={() => setIsSmartPasteOpen(false)}
         onApply={(parsedText) => {
           setRawText((prev) => (prev ? `${prev}\n\n${parsedText}` : parsedText));
+          if (contentMode === 'blocks') {
+            const parsed = smartParseText(parsedText).blocks;
+            pushBlocksHistory([...blocks, ...parsed]);
+          }
           onShowToast('تم تطبيق النص الذكي على المحرر');
         }}
+      />
+
+      {/* Diff Summary Modal before final save */}
+      <DiffSummaryModal
+        isOpen={showDiffModal}
+        originalBlocks={originalBlocks}
+        currentBlocks={blocks}
+        onConfirmSave={() => {
+          setShowDiffModal(false);
+          performActualSave();
+        }}
+        onCancel={() => setShowDiffModal(false)}
       />
 
       {/* Fullscreen Preview Modal */}

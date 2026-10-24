@@ -13,6 +13,10 @@ interface StudioHeaderProps {
   onClose: () => void;
   activeView: 'editor' | 'preview';
   onChangeActiveView: (view: 'editor' | 'preview') => void;
+  contentMode: 'fast' | 'blocks' | 'html' | 'slides';
+  onChangeContentMode: (mode: 'fast' | 'blocks' | 'html' | 'slides') => void;
+  blocksCount?: number;
+  slidesCount?: number;
   existingPolicies?: Policy[];
   currentPolicyId?: string;
   onSelectPolicy?: (id: string) => void;
@@ -30,12 +34,16 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onClose,
   activeView,
   onChangeActiveView,
+  contentMode,
+  onChangeContentMode,
+  blocksCount = 0,
+  slidesCount = 0,
   existingPolicies = [],
   currentPolicyId,
   onSelectPolicy,
 }) => {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm" dir="rtl">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs" dir="rtl">
       {/* Title & Info */}
       <div className="flex items-center gap-3 overflow-hidden">
         <span className="p-2 bg-teal-50 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 rounded-xl text-base font-bold shrink-0">
@@ -86,6 +94,68 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Mode Switcher Tabs */}
+      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold order-3 lg:order-none w-full lg:w-auto justify-center overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => onChangeContentMode('fast')}
+          className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+            contentMode === 'fast'
+              ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>✍️</span>
+          <span>كتابة سريعة</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChangeContentMode('blocks')}
+          className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+            contentMode === 'blocks'
+              ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>🧱</span>
+          <span>محرر الكتل</span>
+          {blocksCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 font-mono">
+              {blocksCount}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChangeContentMode('html')}
+          className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+            contentMode === 'html'
+              ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>💻</span>
+          <span>HTML</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChangeContentMode('slides')}
+          className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+            contentMode === 'slides'
+              ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>📊</span>
+          <span>الشرائح</span>
+          {slidesCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 font-mono">
+              {slidesCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Middle View Switcher (for small/medium screens) */}
