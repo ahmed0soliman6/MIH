@@ -13,6 +13,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
+      - run: npm test
       - run: npm run build:ci
       # حارس أمني: ممنوع وجود مفتاح Google (AIza...) أو أسرار في الحزمة الناتجة
       - name: Fail if a real API key leaked into the bundle

@@ -15,6 +15,13 @@ export interface OfficialDocumentProps {
   zoomScale?: number;
 }
 
+export function formatVersion(versionStr?: string | null): string {
+  if (!versionStr || !versionStr.trim()) return '—';
+  const cleaned = versionStr.replace(/^(?:الإصدار|الاصدار|version|v)\s*[:：#]?\s*/i, '').trim();
+  if (!cleaned) return '—';
+  return `الإصدار ${cleaned}`;
+}
+
 export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
   policy,
   mode = 'page',
@@ -44,9 +51,8 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
   const code = policy.code || '—';
   const effectiveDate = policy.effectiveDate || policy.date || '—';
   const reviewDate = policy.reviewDate || '—';
-  const version = policy.version || '—';
+  const formattedVersion = formatVersion(policy.version);
   const dept = policy.dept || '—';
-  const targetDepts = policy.target_departments || '—';
 
   return (
     <div className={`mih-doc-wrapper flex justify-center w-full ${mode === 'page' ? 'py-4 overflow-x-auto' : ''}`}>
@@ -110,7 +116,7 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                 <footer className="mt-6 pt-3 border-t border-slate-300 flex items-center justify-between text-[10px] text-slate-500 font-mono">
                   <span>{code}</span>
                   <span>مستشفى المنصورة الدولي • إدارة الجودة</span>
-                  <span>الإصدار {version}</span>
+                  <span>{formattedVersion}</span>
                 </footer>
               </td>
             </tr>
@@ -137,7 +143,7 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                         <th className="w-1/4">كود السياسة:</th>
                         <td className="w-1/4 font-mono font-bold">{code}</td>
                         <th className="w-1/4">رقم الإصدار:</th>
-                        <td className="w-1/4 font-mono">{version}</td>
+                        <td className="w-1/4 font-mono">{formattedVersion}</td>
                       </tr>
                       <tr>
                         <th>تاريخ السريان:</th>
@@ -146,10 +152,8 @@ export const OfficialDocument: React.FC<OfficialDocumentProps> = ({
                         <td className="font-mono">{reviewDate}</td>
                       </tr>
                       <tr>
-                        <th>القسم المعتمد:</th>
-                        <td>{dept}</td>
                         <th>الأقسام المستهدفة:</th>
-                        <td>{targetDepts}</td>
+                        <td colSpan={3}>{dept}</td>
                       </tr>
                       {responsibilitiesText && (
                         <tr>

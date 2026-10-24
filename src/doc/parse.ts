@@ -61,6 +61,9 @@ export function parseHtmlToBlocks(html: string | null | undefined): Block[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const root = doc.body;
 
+  // Replace <br> tags with space so words separated by linebreaks are not glued together
+  root.querySelectorAll('br').forEach((br) => br.replaceWith(' '));
+
   const blocks: Block[] = [];
 
   // If wrapped in .mih-doc, search through it
@@ -68,6 +71,76 @@ export function parseHtmlToBlocks(html: string | null | undefined): Block[] {
 
   const processNode = (node: Element) => {
     const tag = node.tagName.toLowerCase();
+
+    // 0. Unwrap generic containers: div.policy-doc, wrapper divs, article, main
+    if (tag === 'div' || tag === 'article' || tag === 'main') {
+      if (node.classList.contains('mih-callout')) {
+        const calloutType = (node.getAttribute('data-type') as CalloutType) || 'note';
+        blocks.push({
+          id: createBlockId(),
+          type: 'callout',
+          calloutType,
+          text: cleanText(node.textContent),
+        });
+        return;
+      }
+
+      if (node.classList.contains('mih-table-wrap')) {
+        const table = node.querySelector('table');
+        if (table) {
+          processNode(table);
+          return;
+        }
+      }
+
+      // If div has children elements, unwrap and process them
+      if (node.children.length > 0) {
+        for (const child of Array.from(node.children)) {
+          processNode(child);
+        }
+        return;
+      }
+
+      // If div has pure text without element children, treat as paragraph
+      const text = cleanText(node.textContent);
+      if (text) {
+        blocks.push({
+          id: createBlockId(),
+          type: 'paragraph',
+          text,
+        });
+      }
+      return;
+    }
+
+    if (tag === 'br') {
+      return;
+    }
+
+    if (tag === 'strong' || tag === 'b') {
+      const text = cleanText(node.textContent);
+      if (text) {
+        blocks.push({
+          id: createBlockId(),
+          type: 'subheading',
+          text,
+          style: 'underline',
+        });
+      }
+      return;
+    }
+
+    if (tag === 'span' || tag === 'em' || tag === 'i') {
+      const text = cleanText(node.textContent);
+      if (text) {
+        blocks.push({
+          id: createBlockId(),
+          type: 'paragraph',
+          text,
+        });
+      }
+      return;
+    }
 
     if (tag === 'section' && node.classList.contains('mih-sec')) {
       const style = (node.getAttribute('data-style') as SectionStyle) || 'bar';

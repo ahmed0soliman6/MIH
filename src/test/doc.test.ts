@@ -193,11 +193,32 @@ describe('Round-trip parse/serialize tests', () => {
     expect(parsedTable.rows[0]).toEqual(['التعقيم', 'فريق مكافحة العدوى']);
   });
 
-  it('successfully parses and preserves content from default policies', () => {
-    // Test sample policies from DEFAULT_POLICIES
-    const samplePolicies = DEFAULT_POLICIES.slice(0, 5);
+  it('verifies raw blocks are under 5% across all 101 policies', () => {
+    let totalBlocks = 0;
+    let rawBlocks = 0;
 
-    for (const policy of samplePolicies) {
+    for (const policy of DEFAULT_POLICIES) {
+      if (!policy.content_html) continue;
+      const blocks = parseHtmlToBlocks(policy.content_html);
+      totalBlocks += blocks.length;
+      rawBlocks += blocks.filter((b) => b.type === 'raw').length;
+    }
+
+    const rawPercentage = totalBlocks > 0 ? (rawBlocks / totalBlocks) * 100 : 0;
+    console.log(`[101 Policies Benchmark] Total blocks: ${totalBlocks}, Raw blocks: ${rawBlocks}, Raw percentage: ${rawPercentage.toFixed(2)}%`);
+    expect(rawPercentage).toBeLessThan(5.0);
+  });
+
+  it('runs round-trip parse/serialize across all 101 policies comparing normalized text', () => {
+    const getNormalizedBlockText = (html: string) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, tr, th, td, section, div, br').forEach((el) => {
+        el.after(' ');
+      });
+      return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+    };
+
+    for (const policy of DEFAULT_POLICIES) {
       if (!policy.content_html) continue;
 
       const blocks = parseHtmlToBlocks(policy.content_html);
@@ -206,14 +227,11 @@ describe('Round-trip parse/serialize tests', () => {
       const serialized = serializeBlocksToHtml(blocks);
       expect(serialized.length).toBeGreaterThan(0);
 
-      // Re-parse serialized output
-      const reparsedBlocks = parseHtmlToBlocks(serialized);
-      expect(reparsedBlocks.length).toBeGreaterThan(0);
+      const originalText = getNormalizedBlockText(policy.content_html);
+      const serializedText = getNormalizedBlockText(serialized);
 
-      // Ensure key sections/lists were retained
-      const originalTypes = blocks.map((b) => b.type);
-      const reparsedTypes = reparsedBlocks.map((b) => b.type);
-      expect(reparsedTypes.length).toBe(originalTypes.length);
+      // Normalized text content across all 101 policies should match completely without loss
+      expect(serializedText).toBe(originalText);
     }
   });
 });

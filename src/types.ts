@@ -32,10 +32,14 @@ export interface Policy {
   effectiveDate?: string;
   reviewDate?: string;
   responsibilities?: string | string[];
+  target_departments?: string;
+  summary?: string;
   created_at?: string;
   updated_at?: string;
   author_email?: string;
-  [key: string]: any;
+  updated_by?: string;
+  _summary?: boolean;
+  _file?: string;
 }
 
 export interface BundleItem {

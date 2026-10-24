@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Policy, Slide, CategoryKey, SystemSettings, AdminRole, AdminEntry } from '../types';
 import { sanitizeHtml, htmlToText } from '../utils/sanitize';
 import { CATEGORY_META } from '../data/meta';
@@ -16,6 +16,7 @@ import {
 } from '../services/aiAndParsers';
 import { PDFDocument } from 'pdf-lib';
 import { JsonImportModal } from './JsonImportModal';
+import { PolicyStudio } from './studio/PolicyStudio';
 
 // Converts plain formatted Arabic text into structured semantic HTML
 export function convertPlainTextToHtml(text: string): string {
@@ -664,6 +665,48 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
+  const currentEditingPolicy: Policy | null = useMemo(() => {
+    if (editingPolicy) return editingPolicy;
+    if (selectedPolicyId && selectedPolicyId !== 'new') {
+      const found = policies?.find((p) => p.id === selectedPolicyId);
+      if (found) return found;
+    }
+    if (title || contentHtml || manualPlainText) {
+      return {
+        id: selectedPolicyId && selectedPolicyId !== 'new' ? selectedPolicyId : `pol-${Date.now()}`,
+        title: title || '',
+        code: code || '',
+        category: (isCustomCategory ? customCategoryName : category) || 'QPI',
+        dept: dept || 'جميع أقسام المستشفى',
+        version: version || '1.0',
+        date: date || '',
+        purpose: purpose || '',
+        content_html: contentHtml || '',
+        plain_text: manualPlainText || '',
+        slides: slides || [],
+        images: images || [],
+      };
+    }
+    return null;
+  }, [
+    editingPolicy,
+    selectedPolicyId,
+    policies,
+    title,
+    contentHtml,
+    manualPlainText,
+    code,
+    category,
+    isCustomCategory,
+    customCategoryName,
+    dept,
+    version,
+    date,
+    purpose,
+    slides,
+    images,
+  ]);
+
   const meta = CATEGORY_META[category] || CATEGORY_META.QPI;
 
   return (
@@ -1130,563 +1173,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
         </div>
       )}
 
-      {/* 2. Section: محرر ومعاينة السياسة (Policy Editor & Preview) */}
+      {/* 2. Section: استوديو السياسات المتطور (Policy Studio - Phase 3A) */}
       {activeTopCard === 'editor' && (
-      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
-        {/* Policy Quick Selector Banner */}
-        {policies && policies.length > 0 && (
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📑</span>
-              <div>
-                <span className="text-xs font-bold text-teal-950 dark:text-teal-200 block">
-                  اختيار سياسة للتعديل والمعاينة الفورية بالمحاكي ({policies.length} سياسة متوفرة):
-                </span>
-                <span className="text-[11px] text-teal-800 dark:text-teal-300">
-                  حدد أي سياسة لعرض شرائحها ووثيقتها أو إنشاء سياسة جديدة
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 flex-grow sm:flex-grow-0">
-              <select
-                value={selectedPolicyId}
-                onChange={(e) => handleSelectPolicy(e.target.value)}
-                className="w-full sm:w-auto px-3.5 py-2 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none cursor-pointer"
-              >
-                <option value="new">➕ إنشاء سياسة جديدة فارغة</option>
-                {policies.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} - {p.title} ({p.slides?.length || 0} شريحة)
-                  </option>
-                ))}
-              </select>
-
-              {selectedPolicyId !== 'new' && (
-                <button
-                  type="button"
-                  onClick={() => handleSelectPolicy('new')}
-                  className="px-3 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 hover:bg-teal-100 dark:hover:bg-slate-700 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700 transition cursor-pointer whitespace-nowrap"
-                  title="تفريغ الحقول لإنشاء سياسة جديدة"
-                >
-                  ➕ جديدة
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <div>
-            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-              محرر ومعاينة السياسة (Policy Editor & Preview)
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-              راجع وعدّل الحقول والشرائح، وتأكد من المعاينة قبل الحفظ في السحابة
-            </p>
-          </div>
-
-          {/* Editor Tabs */}
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
-            <button
-              type="button"
-              onClick={() => setEditorTab('edit-fields')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
-                editorTab === 'edit-fields'
-                  ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              ✏️ تحرير الحقول والشرائح
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorTab('preview-doc')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
-                editorTab === 'preview-doc'
-                  ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              📖 معاينة الوثيقة الرسمية
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorTab('preview-slides')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
-                editorTab === 'preview-slides'
-                  ? 'bg-teal-700 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              📽️ محاكي عارض الشرائح
-            </button>
-          </div>
-        </div>
-
-        {/* Tab 1: Edit Fields & Slides */}
-        {editorTab === 'edit-fields' && (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="lg:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  عنوان السياسة الرسمي *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="مثال: سياسة الوقاية من الجلطات الوريدية العميقة..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  كود السياسة (Policy Code) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="مثال: MIH-NSR-005"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  القسم / التصنيف *
-                </label>
-                <select
-                  value={isCustomCategory ? 'CUSTOM' : category}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'CUSTOM') {
-                      setIsCustomCategory(true);
-                    } else {
-                      setIsCustomCategory(false);
-                      setCategory(val as CategoryKey);
-                    }
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none cursor-pointer"
-                >
-                  {(Object.keys(CATEGORY_META) as CategoryKey[]).map((k) => (
-                    <option key={k} value={k}>
-                      {CATEGORY_META[k].name}
-                    </option>
-                  ))}
-                  <option value="CUSTOM">➕ إضافة قسم / تصنيف مخصص جديد...</option>
-                </select>
-
-                {isCustomCategory && (
-                  <div className="mt-2 space-y-1">
-                    <input
-                      type="text"
-                      required
-                      value={customCategoryName}
-                      onChange={(e) => setCustomCategoryName(e.target.value)}
-                      placeholder="أدخل رمز أو اسم القسم الجديد (مثال: LAB - المختبرات الطبية)..."
-                      className="w-full px-3 py-2 rounded-xl border border-teal-500 bg-teal-50/70 dark:bg-slate-800 text-xs font-bold text-teal-900 dark:text-teal-200 focus:ring-2 focus:ring-teal-600 outline-none placeholder:text-slate-400"
-                    />
-                    <p className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">
-                      سيتم حفظ هذا القسم الجديد وربطه بالسياسة مباشرة.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="lg:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  الأقسام المستهدفة بالمستشفى *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={dept}
-                  onChange={(e) => setDept(e.target.value)}
-                  placeholder="مثال: الأقسام الداخلية، العنايات المركزة، والعمليات..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  رقم الإصدار
-                </label>
-                <input
-                  type="text"
-                  value={version}
-                  onChange={(e) => setVersion(e.target.value)}
-                  placeholder="الإصدار 1.0"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  تاريخ الاعتماد
-                </label>
-                <input
-                  type="text"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  placeholder="أكتوبر 2026"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Purpose */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                الهدف العام من السياسة (Policy Purpose) *
-              </label>
-              <textarea
-                rows={2}
-                required
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                placeholder="اكتب الهدف الإكلينيكي أو الإداري المباشر من تطبيق السياسة..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
-              ></textarea>
-            </div>
-
-            {/* Policy Content with Mode Switcher (Manual Plain Text vs HTML) */}
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-                <div>
-                  <label className="block text-xs font-black text-slate-900 dark:text-white">
-                    محتوى السياسة الكامل *
-                  </label>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
-                    {contentInputMode === 'text'
-                      ? 'اكتب المحتوى كنص عادي وسيقوم النظام بتنسيقه تلقائياً كفقرات ونقاط وقوائم معتمدة'
-                      : 'محرر HTML المتقدم (يدعم العناوين h3، الفقرات p، والجداول table)'}
-                  </span>
-                </div>
-
-                {/* Mode Switch Buttons */}
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (contentInputMode !== 'text') {
-                        if (!manualPlainText && contentHtml) {
-                          setManualPlainText(stripHtmlTags(contentHtml));
-                        }
-                        setContentInputMode('text');
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                      contentInputMode === 'text'
-                        ? 'bg-teal-700 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>📝</span>
-                    <span>إدخال يدوي (نص عادي)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (contentInputMode !== 'html') {
-                        if (manualPlainText && !contentHtml) {
-                          setContentHtml(convertPlainTextToHtml(manualPlainText));
-                        }
-                        setContentInputMode('html');
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                      contentInputMode === 'html'
-                        ? 'bg-teal-700 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>💻</span>
-                    <span>محرر HTML</span>
-                  </button>
-                </div>
-              </div>
-
-              {contentInputMode === 'text' ? (
-                <div className="space-y-2">
-                  {/* Quick Insert Toolbar */}
-                  <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
-                    <span className="font-bold text-slate-500 dark:text-slate-400 text-[11px] ml-1">إضافة سريعة:</span>
-                    <button
-                      type="button"
-                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n\n### عنوان الإجراء الفرعي:\n' : '### عنوان الإجراء الفرعي:\n'))}
-                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
-                    >
-                      ➕ عنوان رئيسي
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n- خطوة إجرائية:\n' : '- خطوة إجرائية:\n'))}
-                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
-                    >
-                      ➕ نقطة في قائمة
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\n- المسؤوليات: الأطباء والتمريض وفريق الجودة المعني.\n' : '- المسؤوليات: الأطباء والتمريض وفريق الجودة المعني.\n'))}
-                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-[11px] cursor-pointer shadow-2xs"
-                    >
-                      ➕ المسؤوليات
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setManualPlainText((prev) => (prev ? prev + '\nتنبيه: يجب مراعاة سلامة المريض والتوثيق الفوري بالسجلات الطبية.\n' : 'تنبيه: يجب مراعاة سلامة المريض والتوثيق الفوري بالسجلات الطبية.\n'))}
-                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-amber-800 dark:text-amber-300 font-bold text-[11px] cursor-pointer shadow-2xs"
-                    >
-                      ⚠️ تنبيه هام
-                    </button>
-                  </div>
-
-                  <textarea
-                    rows={9}
-                    required
-                    value={manualPlainText}
-                    onChange={(e) => {
-                      setManualPlainText(e.target.value);
-                      setContentHtml(convertPlainTextToHtml(e.target.value));
-                    }}
-                    placeholder={`اكتب محتوى السياسة وإجراءاتها هنا بسهولة بدون كود HTML...\nمثال:\n### 1. الإجراءات المتبعة\n- فحص العلامات الحيوية للمريض فور الدخول\n- تطبيق العزل الوقائي عند الاشتباه\n\n### 2. المسؤوليات\n- التمريض: تنفيذ خطة الرعاية والتوثيق\n- الطبيب المعالج: مراجعة خطة العلاج`}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none leading-relaxed custom-scroll"
-                  ></textarea>
-                </div>
-              ) : (
-                <textarea
-                  rows={8}
-                  required
-                  value={contentHtml}
-                  onChange={(e) => setContentHtml(e.target.value)}
-                  placeholder="اكتب أو الصق نص السياسة المنسق بـ HTML هنا (أو استخدم الرفع التلقائي لملفات Word/PDF)..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
-                ></textarea>
-              )}
-            </div>
-
-            {/* Slides Builder */}
-            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-black text-slate-900 dark:text-white text-sm">
-                    محرر شرائح العرض التقديمي (Interactive Slides Deck)
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                    تُستخدم هذه الشرائح في وضع العرض التقديمي وشاشات التدريب
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddSlide}
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>➕</span>
-                  <span>إضافة شريحة جديدة</span>
-                </button>
-              </div>
-
-              {slides.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
-                  لا توجد شرائح حالياً. اضغط على "+ إضافة شريحة جديدة" أو قم برفع ملف لتوليدها تلقائياً.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {slides.map((s, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm hover:border-teal-500 transition"
-                    >
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                        <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800">
-                          شريحة {idx + 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSlide(idx)}
-                          className="text-xs font-bold text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50 cursor-pointer"
-                          title="حذف الشريحة"
-                        >
-                          🗑️ حذف
-                        </button>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          عنوان الشريحة
-                        </label>
-                        <input
-                          type="text"
-                          value={s.slide_title}
-                          onChange={(e) => handleUpdateSlideTitle(idx, e.target.value)}
-                          placeholder="عنوان الشريحة..."
-                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-teal-600 outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          نقاط الشريحة (نقطة في كل سطر)
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={(s.bullet_points || []).join('\n')}
-                          onChange={(e) => handleUpdateSlideBullets(idx, e.target.value)}
-                          placeholder="أدخل كل نقطة في سطر منفصل..."
-                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-teal-600 outline-none custom-scroll"
-                        ></textarea>
-                      </div>
-
-                      {s.image_url && (
-                        <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                          <img src={s.image_url} alt="attached" className="w-10 h-10 object-cover rounded" />
-                          <span className="truncate flex-1 font-mono text-[11px]">{s.image_url}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSlideImage(idx)}
-                            className="text-red-600 font-bold hover:underline cursor-pointer"
-                          >
-                            إزالة
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => {
-                  resetFields();
-                  onResetEditor();
-                }}
-                className="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
-              >
-                مسح وإلغاء
-              </button>
-
-              <button
-                type="submit"
-                className="px-8 py-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-sm transition shadow-lg flex items-center gap-2 cursor-pointer"
-              >
-                <span>💾</span>
-                <span>حفظ ونشر السياسة في قاعدة البيانات (Firestore)</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Tab 2: Official Document Live Preview */}
-        {editorTab === 'preview-doc' && (
-          <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b-2 border-slate-900">
-              <div className="flex items-center gap-3">
-                <img
-                  src="/assets/logo.jpg"
-                  alt="شعار المستشفى"
-                  className="w-14 h-14 object-contain rounded"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      'https://ui-avatars.com/api/?name=MIH&background=991b1b&color=fff';
-                  }}
-                />
-                <div>
-                  <h2 className="text-base sm:text-lg font-extrabold text-slate-900">مستشفى المنصورة الدولي</h2>
-                  <p className="text-xs text-slate-600 font-semibold">
-                    أمانة المراكز الطبية المتخصصة (SMC) • إدارة الجودة وسلامة المرضى
-                  </p>
-                </div>
-              </div>
-              <div className="text-left font-mono text-xs text-slate-600 space-y-1">
-                <div>
-                  <strong className="text-slate-900">كود الوثيقة:</strong> {code || 'MIH-CODE-001'}
-                </div>
-                <div>
-                  <strong className="text-slate-900">تاريخ الاعتماد:</strong> {date || getArabicCurrentMonthYear()}
-                </div>
-                <div>
-                  <strong className="text-slate-900">رقم الإصدار:</strong> {version || 'الإصدار 1.0'}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${meta.badge}`}>
-                  {code || 'MIH-CODE-001'} • {meta.name}
-                </span>
-                <span className="text-xs text-slate-500 font-bold">القسم المستهدف: {dept || 'القسم المعني'}</span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900">{title || 'عنوان السياسة الرسمي'}</h1>
-            </div>
-
-            <div className="p-4 rounded-xl bg-teal-50/70 border-r-4 border-teal-700 text-teal-950 space-y-1">
-              <h4 className="text-xs font-extrabold text-teal-900 uppercase">الهدف العام من السياسة (Policy Purpose):</h4>
-              <p className="text-sm font-semibold leading-relaxed">
-                {purpose || 'اكتب الهدف الإجرائي من السياسة لمشاهدة المعاينة...'}
-              </p>
-            </div>
-
-            <div
-              className="policy-content-html border-t border-slate-100 pt-4"
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(contentHtml) || '<p class="text-slate-400 italic">لا يوجد محتوى HTML مكتوب حتى الآن...</p>'
-              }}
-            ></div>
-          </div>
-        )}
-
-        {/* Tab 3: Slides Simulator */}
-        {editorTab === 'preview-slides' && (
-          <div>
-            {slides.length === 0 ? (
-              <div className="p-10 text-center text-slate-400 bg-slate-900 rounded-2xl">
-                لا توجد شرائح للعرض. قم بإضافة شرائح لمشاهدة المحاكاة.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {slides.map((s, idx) => (
-                  <div
-                    key={idx}
-                    className="p-5 rounded-xl bg-slate-900 text-white border border-slate-800 space-y-4 shadow-lg"
-                  >
-                    <div className="flex items-center justify-between text-xs text-teal-400 font-bold border-b border-slate-800 pb-2">
-                      <span>شريحة {idx + 1} من {slides.length}</span>
-                      <span className="text-slate-400">{code || 'MIH-SLIDE'}</span>
-                    </div>
-                    <h3 className="text-lg font-extrabold text-white">{s.slide_title}</h3>
-                    <ul className="space-y-2 text-xs sm:text-sm text-slate-200">
-                      {(s.bullet_points || []).map((b, bIdx) => (
-                        <li key={bIdx} className="flex items-start gap-2">
-                          <span className="text-teal-400 mt-0.5">●</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {s.image_url && (
-                      <img
-                        src={s.image_url}
-                        alt="slide"
-                        className="rounded-lg max-h-48 w-full object-cover border border-slate-700 mt-2"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+        <PolicyStudio
+          policy={currentEditingPolicy}
+          existingPolicies={policies || []}
+          onSave={async (savedPolicy) => {
+            await onSavePolicy(savedPolicy);
+            setSelectedPolicyId(savedPolicy.id);
+          }}
+          onClose={() => {
+            setActiveTopCard('converter');
+            onResetEditor();
+          }}
+          onShowToast={onShowToast}
+          onSelectPolicy={(id) => {
+            handleSelectPolicy(id);
+          }}
+        />
       )}
 
       {/* JSON Batch Import Modal */}
